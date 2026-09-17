@@ -1,19 +1,19 @@
 # Radar Team
 
-/src/radar/                @CCNY-CSC456/Teams/radar
-/tests/radar/              @CCNY-CSC456/Teams/radar
-/requirements/radar/       @CCNY-CSC456/Teams/radar
+/src/radar/                @CCNY-CSC456/radar
+/tests/radar/              @CCNY-CSC456/radar
+/requirements/radar/       @CCNY-CSC456/radar
 
 
 # Tower Team
 
-/src/tower/                @CCNY-CSC456/Teams/tower
-/tests/tower/              @CCNY-CSC456/Teams/tower
-/requirements/tower/       @CCNY-CSC456/Teams/tower
+/src/tower/                @CCNY-CSC456/tower
+/tests/tower/              @CCNY-CSC456/tower
+/requirements/tower/       @CCNY-CSC456/tower
 
 
 # Command Team
 
-/src/command/              @CCNY-CSC456/Teams/command
-/tests/command/            @CCNY-CSC456/Teams/command
-/requirements/command/     @CCNY-CSC456/Teams/command
+/src/command/              @CCNY-CSC456/command
+/tests/command/            @CCNY-CSC456/command
+/requirements/command/     @CCNY-CSC456/command
