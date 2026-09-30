@@ -4,6 +4,7 @@
 import pytest
 from pydantic import ValidationError
 from src.tower.messaging.models import Message
+from src.tower.messaging import db
 
 
 # --- models.py ---
@@ -19,3 +20,25 @@ def test_message_missing_field_raises():
     # No recipient, so Pydantic should refuse to build the Message.
     with pytest.raises(ValidationError):
         Message(sender="radar", content="no recipient")
+
+
+# --- db.py ---
+
+def use_temp_db(tmp_path):
+    # Point the database at a throwaway file so tests never touch the real messages.db
+    db.DB = str(tmp_path / "test.db")
+    db.init_db()
+
+
+def test_save_and_get_message(tmp_path):
+    use_temp_db(tmp_path)
+    db.save_message("radar", "tower", "AA123 inbound")
+    assert db.get_messages("tower") == [
+        {"sender": "radar", "recipient": "tower", "content": "AA123 inbound"}
+    ]
+
+
+def test_other_recipient_gets_nothing(tmp_path):
+    use_temp_db(tmp_path)
+    db.save_message("radar", "tower", "AA123 inbound")
+    assert db.get_messages("command") == []
