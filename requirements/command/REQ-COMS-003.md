@@ -1,0 +1,1 @@
+Test requirements file for COMMAND. The program shall print "Command online."
