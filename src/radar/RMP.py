@@ -1,2 +1,2 @@
-def RMP():
-    return "This works."
+def readiness():
+    return "Radar: Ready"
