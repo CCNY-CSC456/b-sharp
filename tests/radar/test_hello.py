@@ -1,4 +1,12 @@
 # REQ-RAD-010
-from src.radar.hello import pushcode
+import subprocess
+import sys
+
 def test_hello():
-    assert pushcode() == "Hello"
+    result = subprocess.run(
+        [sys.executable, "src/radar/hello.py"],
+        capture_output = True,
+        text = True,
+        check = True
+    )
+    assert result.stdout.strip() == "Hello"
