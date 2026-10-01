@@ -1,12 +1,6 @@
 # REQ-RAD-011
-import subprocess
-import sys
+from src.radar.jacob_tutorial import radar_status
 
-def test_jacob_tutorial():
-    result = subprocess.run(
-        [sys.executable, "src/radar/jacob_tutorial.py"],
-        capture_output = True,
-        text = True,
-        check = True
-    )
-    assert result.stdout.strip() == "Radar online"
+
+def test_radar_status():
+    assert radar_status() == "Radar online"

@@ -1,2 +1,5 @@
 # REQ-RAD-011
-print("Radar online")
+
+
+def radar_status():
+    return "Radar online"
