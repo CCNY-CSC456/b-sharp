@@ -1,4 +1,4 @@
-# REQ-TOW-002
+# REQ-TOW-005
 # send.py — the "drop-off window." Handles SENDING a message.
 # Endpoint: POST /messages
 

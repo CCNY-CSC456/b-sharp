@@ -1,4 +1,4 @@
-# Messaging (REQ-TOW-002)
+# Messaging (REQ-TOW-005)
 
 A barebones server that lets radar, tower, and command send messages to each other.
 FastAPI + SQLite, no frontend. A message has 3 fields: `sender`, `recipient`, `content`.

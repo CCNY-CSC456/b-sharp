@@ -1,4 +1,4 @@
-# REQ-TOW-002
+# REQ-TOW-005
 # main.py — the entry point. This is the file uvicorn runs:
 #   uvicorn src.tower.messaging.main:app --reload   (run from the repo root)
 # (src.tower.messaging.main = this file, "app" = the app variable below)

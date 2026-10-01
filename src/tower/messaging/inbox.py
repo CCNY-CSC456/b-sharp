@@ -1,4 +1,4 @@
-# REQ-TOW-002
+# REQ-TOW-005
 # inbox.py — the "pick-up window." Handles CHECKING a subsystem's messages.
 # Endpoint: GET /messages?recipient=tower
 

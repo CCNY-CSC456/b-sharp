@@ -1,4 +1,4 @@
-# REQ-TOW-002
+# REQ-TOW-005
 # Automated tests for the messaging server. CI runs these with: pytest tests/tower
 # TestClient lets us call the endpoints directly, no need to start uvicorn.
 

@@ -2,4 +2,4 @@
 |----|----|----|----|----|----|
 | REQ-RAD-003 | Radar | Message Sending Utility | | | |
 | REQ-TOW-001 | Tower | Print Hello World | src/tower/hello.py | tests/tower/test_hello.py | |
-| REQ-TOW-002 | Tower | Message Sending Utility | src/tower/messaging/ | tests/tower/test_messaging.py | |
+| REQ-TOW-005 | Tower | Message Sending Utility | src/tower/messaging/ | tests/tower/test_messaging.py | |
