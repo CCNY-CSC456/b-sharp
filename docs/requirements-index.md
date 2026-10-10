@@ -8,3 +8,4 @@
 | REQ-TOW-005 | Tower | Message Sending Utility | src/tower/messaging/ | tests/tower/test_messaging.py | |
 | REQ-TOW-004 | Tower | Takeoff Clearance Message | src/tower/clearance.py | tests/tower/test_clearance.py | |
 | REQ-RAD-012 | Radar | Create Airplane | src/radar/airplane/ | tests/radar/test_aircraft_repo.py | |
+| REQ-TOW-006 | Tower | Create Airport | src/tower/airport/ | tests/tower/test_airport_repo.py | |
