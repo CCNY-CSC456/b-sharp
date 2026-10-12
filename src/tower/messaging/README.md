@@ -1,7 +1,14 @@
 # Messaging (REQ-TOW-005)
 
-A barebones server that lets radar, tower, and command send messages to each other.
+A barebones service that lets radar, tower, and command send messages to each other.
 FastAPI + SQLite, no frontend. A message has 3 fields: `sender`, `recipient`, `content`.
+
+## Quick start (no server needed)
+From the repo root:
+```
+python -m src.tower.messaging send      # asks for the sender, the recipient, and the message
+python -m src.tower.messaging inbox     # asks whose inbox, then shows the messages
+```
 
 ## Endpoints
 | Endpoint | What it does |
@@ -22,7 +29,7 @@ pip install -r requirements.txt pytest
 pytest tests/tower -v
 ```
 
-## Run it for real
+## Run the server (to use it over HTTP)
 **Terminal 1**, start the server and leave it running:
 ```
 uvicorn src.tower.messaging.main:app --reload
@@ -47,3 +54,4 @@ Ctrl+C in Terminal 1 stops the server. Messages are saved in `messages.db` (git-
 | `send.py` | `POST /messages` |
 | `inbox.py` | `GET /messages` |
 | `main.py` | Creates the server and plugs in the endpoints |
+| `__main__.py` | The `send` and `inbox` terminal commands |

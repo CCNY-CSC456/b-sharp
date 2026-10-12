@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from src.tower.messaging.models import Message
 from src.tower.messaging import db
+from src.tower.messaging import __main__ as cli   # the send / inbox commands
 
 
 # --- models.py ---
@@ -80,3 +81,55 @@ def test_missing_field_rejected(tmp_path):
     client = make_client(tmp_path)
     res = client.post("/messages", json={"sender": "radar", "content": "no recipient"})
     assert res.status_code == 422
+
+
+# --- send / inbox commands (__main__.py) ---
+
+def type_answers(monkeypatch, answers):
+    # Pretend a person typed these answers, one per question.
+    answers = iter(answers)
+    monkeypatch.setattr("builtins.input", lambda question: next(answers))
+
+
+def test_send_command_saves_message(tmp_path, monkeypatch, capsys):
+    use_temp_db(tmp_path)
+    type_answers(monkeypatch, ["radar", "tower", "AA123 inbound"])
+    cli.send()
+    assert db.get_messages("tower") == [
+        {"sender": "radar", "recipient": "tower", "content": "AA123 inbound"}
+    ]
+    assert "Sent: radar -> tower" in capsys.readouterr().out
+
+
+def test_send_command_asks_again_for_a_wrong_name(tmp_path, monkeypatch):
+    use_temp_db(tmp_path)
+    # "pilot" isn't a subsystem and the first message is empty, so both are asked again.
+    type_answers(monkeypatch, ["pilot", "Radar", "tower", "", "hello"])
+    cli.send()
+    assert db.get_messages("tower") == [
+        {"sender": "radar", "recipient": "tower", "content": "hello"}
+    ]
+
+
+def test_inbox_command_shows_messages(tmp_path, monkeypatch, capsys):
+    use_temp_db(tmp_path)
+    db.save_message("radar", "tower", "AA123 inbound")
+    type_answers(monkeypatch, ["tower"])
+    cli.inbox()
+    output = capsys.readouterr().out
+    assert "Inbox for tower (1 message)" in output
+    assert "1. From radar" in output
+    assert "AA123 inbound" in output
+
+
+def test_inbox_command_empty(tmp_path, monkeypatch, capsys):
+    use_temp_db(tmp_path)
+    type_answers(monkeypatch, ["command"])
+    cli.inbox()
+    assert "Inbox for command is empty." in capsys.readouterr().out
+
+
+def test_json_content_is_shown_one_field_per_line():
+    lines = cli.format_content('{"aircraft_id": "AA123", "status": "Parked"}')
+    assert lines == ["aircraft_id: AA123", "status: Parked"]
+    assert cli.format_content("plain text") == ["plain text"]
