@@ -7,6 +7,7 @@ import pytest
 from src.radar.airplane.aircraft_repo import create_aircraft, init_db
 from src.radar.airplane.create_airplane import create_airplane, send_to_tower
 from src.radar.airplane.models import AircraftTelemetry
+from src.radar.airplane import __main__ as cli   # the create / list commands
 from src.tower.messaging import db as tower_db
 
 
@@ -54,3 +55,41 @@ def test_send_to_tower(tmp_path, monkeypatch):
     inbox = tower_db.get_messages("tower")
     assert inbox[0]["sender"] == "radar"
     assert "AA123" in inbox[0]["content"]
+
+
+# --- create / list commands (__main__.py) ---
+
+def type_answers(monkeypatch, answers):
+    # Pretend a person typed these answers, one per question.
+    answers = iter(answers)
+    monkeypatch.setattr("builtins.input", lambda question: next(answers))
+
+
+def test_create_command(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(tower_db, "DB", str(tmp_path / "test.db"))
+    conn = init_db(":memory:")
+    # "high" isn't a number, so altitude is asked again. "departing" is fine in lowercase.
+    type_answers(monkeypatch, ["B46", "40.64", "-73.78", "high", "3000", "departing"])
+    cli.create(conn)
+    row = conn.execute("SELECT aircraft_id, altitude, status FROM aircraft").fetchone()
+    assert row == ("B46", 3000.0, "Departing")
+    assert "Created airplane B46" in capsys.readouterr().out
+    assert "B46" in tower_db.get_messages("tower")[0]["content"]
+
+
+def test_create_command_duplicate_id(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(tower_db, "DB", str(tmp_path / "test.db"))
+    conn = init_db(":memory:")
+    create_aircraft(conn, make_plane())  # AA123 already exists
+    type_answers(monkeypatch, ["AA123", "0", "0", "0", "Parked"])
+    cli.create(conn)
+    assert "Not created" in capsys.readouterr().out
+
+
+def test_list_command(capsys):
+    conn = init_db(":memory:")
+    cli.show_aircraft(conn)
+    assert "No airplanes" in capsys.readouterr().out
+    create_aircraft(conn, make_plane())
+    cli.show_aircraft(conn)
+    assert "AA123" in capsys.readouterr().out
