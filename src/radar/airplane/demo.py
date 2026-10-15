@@ -7,21 +7,19 @@
 import sys
 from src.radar.airplane.aircraft_repo import init_db
 from src.radar.airplane.create_airplane import create_airplane
-from src.tower.messaging.db import get_messages
+from src.radar.airplane.__main__ import show_aircraft
+# Tower's own function for printing an inbox, so it looks the same as tower's inbox command.
+from src.tower.messaging.__main__ import show_inbox
 
 aircraft_id = sys.argv[1] if len(sys.argv) > 1 else "AA123"
 conn = init_db("radar.db")
 try:
     plane = create_airplane(conn, aircraft_id, 40.7769, -73.8740, 0, "Parked")
-    print("Created:", plane)
+    print(f"Created airplane {plane.aircraft_id}")
 except ValueError as error:          # e.g. the ID already exists
     print("Not created:", error)
 
-print("\n--- radar.db (aircraft table) ---")
-for row in conn.execute("SELECT * FROM aircraft"):
-    print(row)
+show_aircraft(conn)
 conn.close()
 
-print("\n--- tower's inbox (messages.db) ---")
-for message in get_messages("tower"):
-    print(message)
+show_inbox("tower")
