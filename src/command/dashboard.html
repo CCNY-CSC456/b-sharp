@@ -1,5 +1,4 @@
 <!doctype html>
-<!-- REQ-OPS-001: airport visibility; REQ-OPS-002: Tower messaging. -->
 <html lang="en">
   <head>
     <meta charset="utf-8">
@@ -29,7 +28,7 @@
 
       .shell { max-width: 1440px; margin: 0 auto; padding: 28px clamp(18px, 4vw, 54px) 48px; }
 
-      .topbar, .heading, .section-heading, .message-meta, .metric-head {
+      .topbar, .heading, .section-heading, .message-meta {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -42,7 +41,7 @@
 
       .brand-mark { display: grid; place-items: center; width: 31px; height: 31px; border: 1px solid #4c9e9c; border-radius: 9px; color: #78d5c5; font-size: 16px; }
 
-      .eyebrow, .metric-label, .updated-label { color: #8297a2; font-size: 11px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+      .metric-label, .updated-label { color: #8297a2; font-size: 11px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
 
       .status-pill { display: inline-flex; align-items: center; gap: 9px; border: 1px solid #2c5d50; border-radius: 999px; padding: 9px 12px; color: #9fe5bb; background: #102a25; font-size: 11px; font-weight: 750; letter-spacing: .1em; }
 
@@ -52,9 +51,7 @@
 
       .heading { align-items: flex-end; padding: 34px 0 26px; }
 
-      h1 { margin: 8px 0 6px; font-size: clamp(27px, 4vw, 39px); letter-spacing: -.04em; font-weight: 650; }
-
-      .subtitle { margin: 0; color: #91a4ae; font-size: 14px; }
+      h1 { margin: 0; font-size: clamp(27px, 4vw, 39px); letter-spacing: -.04em; font-weight: 650; }
 
       .updated { min-width: 190px; text-align: right; }
 
@@ -150,8 +147,6 @@
 
       .degraded-message { margin: 13px 0 0; border: 1px solid #745531; border-radius: 9px; padding: 11px 12px; color: #f0c17d; background: #302519; font-size: 12px; line-height: 1.45; }
 
-      .footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 17px; color: #758a94; font-size: 11px; }
-
       @media (max-width: 880px) {
         .content-grid { grid-template-columns: minmax(0, 1fr); }
         .message-panel { min-height: 430px; }
@@ -167,7 +162,6 @@
         .metric-value { font-size: 17px; }
         .panel { padding: 16px; }
         .section-note { max-width: 110px; text-align: right; }
-        .footer { flex-direction: column; }
       }
 
       @media (prefers-reduced-motion: no-preference) {
@@ -186,11 +180,7 @@
       </header>
 
       <section class="heading" aria-labelledby="airport-name">
-        <div>
-          <div class="eyebrow">Airport visibility · R1</div>
-          <h1 id="airport-name">Loading airport state</h1>
-          <p class="subtitle" id="airport-subtitle">Connecting to the airport data source…</p>
-        </div>
+        <h1 id="airport-name">Loading airport state</h1>
         <div class="updated">
           <span class="updated-label">Demo initialized · UTC</span>
           <time class="updated-value" id="airport-updated">—</time>
@@ -198,10 +188,10 @@
       </section>
 
       <section class="metrics" aria-label="Airport details">
-        <article class="metric"><div class="metric-head"><span class="metric-label">Airport ID</span></div><strong id="airport-id" class="metric-value">—</strong></article>
-        <article class="metric"><div class="metric-head"><span class="metric-label">Perimeter</span></div><strong id="airport-perimeter" class="metric-value small">—</strong></article>
-        <article class="metric"><div class="metric-head"><span class="metric-label">Coordinates</span></div><strong id="airport-coordinates" class="metric-value small">—</strong></article>
-        <article class="metric"><div class="metric-head"><span class="metric-label">Runways</span></div><strong id="airport-runway-count" class="metric-value">—</strong></article>
+        <article class="metric"><span class="metric-label">Airport ID</span><strong id="airport-id" class="metric-value">—</strong></article>
+        <article class="metric"><span class="metric-label">Perimeter</span><strong id="airport-perimeter" class="metric-value small">—</strong></article>
+        <article class="metric"><span class="metric-label">Coordinates</span><strong id="airport-coordinates" class="metric-value small">—</strong></article>
+        <article class="metric"><span class="metric-label">Runways</span><strong id="airport-runway-count" class="metric-value">—</strong></article>
       </section>
 
       <div class="content-grid">
@@ -243,10 +233,6 @@
         </section>
       </div>
 
-      <footer class="footer">
-        <span>Airport record: hard-coded demo data for this version</span>
-        <span>Messages use the shared Tower message store</span>
-      </footer>
     </main>
 
     <script>
@@ -269,7 +255,7 @@
         systemStatusText.textContent = degraded ? "DATA LINKS DEGRADED" : "DATA LINKS NORMAL";
       }
 
-      function createRunway(runway, index, compact = false) {
+      function createRunway(runway, compact = false) {
         const node = document.createElement(compact ? "li" : "span");
         const unavailable = runway.status !== "Available";
         node.className = compact ? "runway-card" : "map-runway";
@@ -297,7 +283,6 @@
 
       function renderAirport(airport) {
         document.getElementById("airport-name").textContent = `Airport ${airport.airport_id}`;
-        document.getElementById("airport-subtitle").textContent = `${airport.number_of_runways} runways · demo airport record`;
         document.getElementById("airport-id").textContent = airport.airport_id;
         document.getElementById("airport-perimeter").textContent = airport.perimeter.toLocaleString();
         document.getElementById("airport-coordinates").textContent = `Lat ${airport.latitude.toFixed(4)} · Lon ${airport.longitude.toFixed(4)}`;
@@ -306,8 +291,8 @@
         document.getElementById("airport-updated").textContent = timestamp || "—";
         document.getElementById("airport-updated").dateTime = timestamp ? `${timestamp}Z` : "";
 
-        mapRunways.replaceChildren(...airport.runways.map((runway, index) => createRunway(runway, index)));
-        runwayList.replaceChildren(...airport.runways.map((runway, index) => createRunway(runway, index, true)));
+        mapRunways.replaceChildren(...airport.runways.map(runway => createRunway(runway)));
+        runwayList.replaceChildren(...airport.runways.map(runway => createRunway(runway, true)));
         document.getElementById("airport-error").hidden = true;
       }
 
@@ -351,7 +336,6 @@
           renderAirport(airportResult.value);
         } else {
           document.getElementById("airport-name").textContent = "Airport state unavailable";
-          document.getElementById("airport-subtitle").textContent = "The airport data source could not be reached.";
           for (const id of ["airport-id", "airport-perimeter", "airport-coordinates", "airport-runway-count", "airport-updated"]) {
             document.getElementById(id).textContent = "—";
           }
@@ -391,7 +375,7 @@
           input.value = "";
           messageFeedback.textContent = "Message sent to Tower.";
           await refreshDashboard();
-        } catch (error) {
+        } catch {
           messageFeedback.classList.add("error");
           messageFeedback.textContent = "Message was not sent. Check messaging availability and try again.";
           setStatus(true);

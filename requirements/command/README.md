@@ -52,4 +52,4 @@ Tests use temporary databases and do not change your local messages. CI installs
 
 ### Later increment
 
-`get_airport_state()` is the replaceable read boundary. This version does not read Tower's airport database, synchronize different computers, or display Radar aircraft. Live data integration can be a separate change after the shared read interface and deployment are defined. No additional team response is required to run or test this hard-coded increment.
+`get_airport_state()` is the replaceable read boundary. This version does not read Tower's airport database, synchronize different computers, or display Radar aircraft. Live data integration can follow once the shared read interface and deployment are defined.

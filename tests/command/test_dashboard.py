@@ -17,13 +17,12 @@ def client(tmp_path, monkeypatch):
         yield client
 
 
-def test_page_has_airport_and_messaging_controls_with_demo_disclosure(client):
+def test_page_has_airport_and_messaging_controls(client):
     response = client.get("/")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     for element in ["airport-perimeter", "airport-coordinates", "airport-runway-count", "map-runways", "runway-list", "message-form", "message-list"]:
         assert f'id="{element}"' in response.text
-    assert "hard-coded demo data" in response.text
 
 
 def test_airport_endpoint_returns_current_snapshot(client):

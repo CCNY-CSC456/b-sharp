@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app):
-    # REQ-OPS-002: use Tower's existing store; an outage must not hide the UI.
+async def lifespan(_app):
+    # Keep the airport visible if Tower messaging cannot initialize.
     try:
         init_db()
     except sqlite3.Error:
@@ -32,19 +32,19 @@ app.include_router(inbox.router)
 
 
 @app.exception_handler(sqlite3.Error)
-async def database_unavailable(request, error):
+async def database_unavailable(_request, _error):
     """Let the page display degraded data links without exposing DB details."""
     return JSONResponse(status_code=503, content={"detail": "Data temporarily unavailable. Try again shortly."})
 
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard():
-    """REQ-OPS-001: serve the airport and Tower messaging dashboard."""
+    """Serve the airport and Tower messaging dashboard."""
     page = Path(__file__).with_name("dashboard.html")
     return page.read_text(encoding="utf-8")
 
 
 @app.get("/api/airport")
 def airport_state():
-    """REQ-OPS-001: return the clearly identified hard-coded airport snapshot."""
+    """Return the airport and runway snapshot."""
     return get_airport_state()

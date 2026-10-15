@@ -7,9 +7,7 @@ from src.tower.airport.airport_repo import RUNWAY_COUNT
 
 _updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
-# Match Tower's field names, numeric perimeter, runway IDs, and status values.
-# These are demo values, not a read from Tower's database. Tower has not specified
-# a perimeter unit, so Command displays the number without inventing a unit.
+# Tower does not specify a perimeter unit, so display its numeric value unchanged.
 _AIRPORT_STATE = {
     "airport_id": "DEMO-001",
     "perimeter": 21000,
@@ -27,11 +25,7 @@ _AIRPORT_STATE = {
 
 
 def get_airport_state():
-    """Return an independent demo snapshot, deriving the count from its runways.
-
-    This is the replaceable read boundary for a later Tower database integration.
-    The demo timestamps use UTC and describe when the sample was initialized.
-    """
+    """Return a copy of the demo snapshot with its runway count."""
     airport = deepcopy(_AIRPORT_STATE)
     airport["number_of_runways"] = len(airport["runways"])
     return airport
