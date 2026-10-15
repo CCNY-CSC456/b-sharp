@@ -1,4 +1,5 @@
-from src.radar.RMP import RMP
+from src.radar.RMP import readiness
 
-def test_RMP():
-    assert RMP() == "This works."
+
+def test_readiness():
+    assert readiness() == "Radar: Ready"

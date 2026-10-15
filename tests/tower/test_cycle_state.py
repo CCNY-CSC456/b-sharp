@@ -1,6 +1,6 @@
 # REQ-TOW-003
 
-from src.tower.state_machine
+from src.tower.state_machine import MessageCycle
 
 def test_cycle_state():
   sm = MessageCycle()
