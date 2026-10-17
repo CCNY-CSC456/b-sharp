@@ -26,7 +26,7 @@ def test_create_saves_the_plane():
     conn = init_db(":memory:")  # a throwaway database that only lives in RAM
     create_aircraft(conn, make_plane())
     rows = conn.execute("SELECT * FROM aircraft").fetchall()
-    assert rows == [("AA123", 40.7769, -73.8740, 0.0, "Parked", "2026-01-01T12:00:00")]
+    assert rows == [("AA123", 40.7769, -73.8740, 0.0, "Parked", "2026-01-01T12:00:00", None)]
 
 
 def test_invalid_status_rejected():
