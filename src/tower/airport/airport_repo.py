@@ -1,11 +1,12 @@
-# REQ-TOW-006
+# REQ-TOW-006, REQ-TOW-007
 # airport_repo.py — the ONLY tower file that talks to the airport database.
-# For now it can only create the tables and add a new airport. Get, update, and delete come later.
+# It can create the tables, add a new airport, and assign a runway. Freeing runways comes later.
 #
 # How to use it:
 #   conn = sqlite3.connect("tower.db")      # open the database once
 #   create_tables(conn)                     # safe to call every time
 #   create_airport(conn, "JFK", 21000, 40.6413, -73.7781)
+#   assign_runway(conn, "JFK", "AA123")     # -> 1 (or None if every runway is taken)
 #   conn.close()                            # close it when you're done
 
 # sqlite3 is built into Python, so there's nothing extra to install.
@@ -34,16 +35,18 @@ def create_tables(conn):
             "airport_id TEXT PRIMARY KEY, perimeter REAL, latitude REAL, longitude REAL)"
         )
         # CHECK = the database itself refuses any other status.
+        # aircraft_id = which airplane has the runway (empty while it's Available).
         conn.execute(
             "CREATE TABLE IF NOT EXISTS runways ("
             "airport_id TEXT, runway_id INTEGER, "
             "status TEXT CHECK(status IN ('Available','Not Available')), timestamp TEXT, "
+            "aircraft_id TEXT, "
             "PRIMARY KEY (airport_id, runway_id))"
         )
         conn.commit()
     except sqlite3.Error:
         return False
-    # Ask SQLite which tables really exist, instead of assuming it worked.
+    # Ask SQLite which tables really exist
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     return {"airport", "runways"} <= tables
 
@@ -64,10 +67,48 @@ def create_airport(conn, airport_id, perimeter, latitude, longitude):
                 (airport_id, perimeter, latitude, longitude),
             )
             timestamp = now()
+            # Columns are named so aircraft_id is left empty: new runways have no airplane yet.
             conn.executemany(
-                "INSERT INTO runways VALUES (?, ?, ?, ?)",
+                "INSERT INTO runways (airport_id, runway_id, status, timestamp) VALUES (?, ?, ?, ?)",
                 [(airport_id, runway_id, "Available", timestamp) for runway_id in range(1, RUNWAY_COUNT + 1)],
             )
     except sqlite3.Error:
         return False
     return True
+
+
+def assign_runway(conn, airport_id, aircraft_id):
+    """Give an airplane a runway at this airport. Returns the runway_id, or None if none is free.
+
+    The lowest-numbered "Available" runway is used. It becomes "Not Available" and remembers the airplane.
+    If the airplane already has a runway, that same runway is returned and nothing changes.
+    That matters because tower's inbox keeps every message, so the same request can be read twice.
+    """
+    # "with conn" makes the look-up and the update one step: either both happen or neither does.
+    with conn:
+        # Already has a runway? Give back the same one instead of taking a second.
+        row = conn.execute(
+            "SELECT runway_id FROM runways WHERE airport_id = ? AND aircraft_id = ?",
+            (airport_id, aircraft_id),
+        ).fetchone()
+        if row is not None:
+            return row[0]
+
+        # Find the lowest-numbered free runway.
+        row = conn.execute(
+            "SELECT runway_id FROM runways WHERE airport_id = ? AND status = 'Available' "
+            "ORDER BY runway_id LIMIT 1",
+            (airport_id,),
+        ).fetchone()
+        if row is None:  # every runway is taken, or there's no such airport
+            return None
+        runway_id = row[0]
+
+        # "AND status = 'Available'" means this only changes the runway if it's still free,
+        # so two airplanes can never end up on the same runway.
+        conn.execute(
+            "UPDATE runways SET status = 'Not Available', aircraft_id = ?, timestamp = ? "
+            "WHERE airport_id = ? AND runway_id = ? AND status = 'Available'",
+            (aircraft_id, now(), airport_id, runway_id),
+        )
+    return runway_id
