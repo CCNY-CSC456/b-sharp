@@ -7,3 +7,4 @@
 | REQ-OPS-002 | Command | Tower messaging in the dashboard | src/command/dashboard.py | tests/command/test_dashboard.py | |
 | REQ-RAD-013 | Radar | Integration with Tower | src/radar/airplane/runway_requests.py | tests/radar/test_runway_requests.py | |
 | REQ-TOW-007 | Tower | Assign Runway | src/tower/airport/airport_repo.py | tests/tower/test_assign_runway.py | |
+| REQ-TOW-008 | Tower | Answer Radar Runway Requests | src/tower/airport/runway_requests.py, src/tower/airport/__main__.py | tests/tower/test_answer_requests.py | |
