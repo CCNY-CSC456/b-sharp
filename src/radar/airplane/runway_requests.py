@@ -12,7 +12,7 @@ import json
 # Tower's messaging functions, used exactly as tower wrote them.
 from src.tower.messaging.db import init_db as init_messages_db, save_message, get_messages
 
-from src.radar.airplane.aircraft_repo import TIME_FORMAT, delete_aircraft, get_aircraft, now, update_runway
+from src.radar.airplane.aircraft_repo import TIME_FORMAT, get_aircraft, now, update_runway
 
 # The message types, all in one place. If tower wants different names, change them here.
 REQUEST_LANDING = "REQUEST_LANDING"    # radar -> tower
@@ -71,15 +71,10 @@ def report_landed(conn, aircraft_id, send=send_to_tower):
 
 
 def report_departed(conn, aircraft_id, send=send_to_tower):
-    """Tell tower the plane has departed, then remove it from radar.
-
-    The message is sent FIRST: if sending fails, the plane is kept so this can be retried.
-    """
-    message = request_runway(conn, aircraft_id, DEPARTED, send)
-    # Delete the plane, because check_tower_replies re-reads old replies every time and
-    # would put the runway back on a plane that still exists.
-    delete_aircraft(conn, aircraft_id)
-    return message
+    """Tell tower the plane has departed, so tower can free its runway. The plane is not changed."""
+    # The plane is kept so command can still see it. Old tower replies are harmless: they just
+    # set the same runway again, and a new request gets a new reply that overwrites runway_id.
+    return request_runway(conn, aircraft_id, DEPARTED, send)
 
 # --- tower -> radar ---
 

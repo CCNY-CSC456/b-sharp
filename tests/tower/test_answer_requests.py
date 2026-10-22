@@ -55,7 +55,10 @@ def test_ignores_messages_that_are_not_runway_requests():
 
 def test_assigns_a_runway_and_replies():
     replies, sent = answer(new_airport(), [radar_request("AA123")])
-    assert sent == [{"type": RUNWAY_ASSIGNED, "aircraft_id": "AA123", "runway_id": 1}]
+    assert sent == [{
+        "type": RUNWAY_ASSIGNED, "aircraft_id": "AA123", "runway_id": 1,
+        "request": REQUEST_LANDING, "request_timestamp": "2026-10-18T14:30:00",  # REQ-TOW-011
+    }]
     assert replies == sent
 
 
@@ -67,7 +70,8 @@ def test_two_airplanes_get_different_runways():
 def test_no_runway_when_all_are_taken():
     inbox = [radar_request(f"PLANE{n}") for n in range(1, 12)]  # 11 planes, 10 runways
     _, sent = answer(new_airport(), inbox)
-    assert sent[-1] == {"type": NO_RUNWAY, "aircraft_id": "PLANE11"}
+    assert sent[-1]["type"] == NO_RUNWAY
+    assert sent[-1]["aircraft_id"] == "PLANE11"
 
 
 def test_same_request_twice_gets_one_reply():
@@ -120,6 +124,6 @@ def test_answer_requests_command(tmp_path, monkeypatch, capsys):
     tower_db.save_message("radar", "tower", radar_request("AA123")["content"])
     monkeypatch.setattr("sys.argv", ["python -m src.tower.airport", "answer-requests"])
     cli.main()
-    assert "AA123: runway 1 assigned" in capsys.readouterr().out
+    assert "AA123: cleared to land on runway 1" in capsys.readouterr().out
     cli.main()  # second run: nothing new to say
-    assert "No new runway requests." in capsys.readouterr().out
+    assert "Nothing new to answer." in capsys.readouterr().out

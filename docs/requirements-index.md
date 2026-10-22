@@ -9,5 +9,7 @@
 | REQ-TOW-007 | Tower | Assign Runway | src/tower/airport/airport_repo.py | tests/tower/test_assign_runway.py | |
 | REQ-TOW-008 | Tower | Answer Radar Runway Requests | src/tower/airport/runway_requests.py, src/tower/airport/__main__.py | tests/tower/test_answer_requests.py | |
 | REQ-RAD-014 | Radar | Report Landed/Departed to Tower | src/radar/airplane/runway_requests.py, src/radar/airplane/aircraft_repo.py | tests/radar/test_landed_departed.py | |
+| REQ-TOW-010 | Tower | Free Runway | src/tower/airport/airport_repo.py | tests/tower/test_free_runway.py | |
+| REQ-TOW-011 | Tower | Takeoff Clearance and Departures | src/tower/airport/runway_requests.py, src/tower/airport/__main__.py | tests/tower/test_departures.py | |
 <!--| REQ-TOW-015 | Tower | Persistent Polling Process Loop | | |-->
 

@@ -8,7 +8,7 @@
 #   python -m src.radar.airplane check-replies      (reads tower's answers and saves any runway)
 #   python -m src.radar.airplane fake-tower-reply   (TESTING: pretend to be tower and answer radar)
 #   python -m src.radar.airplane report-landed      (tells tower the plane landed, REQ-RAD-014)
-#   python -m src.radar.airplane report-departed    (tells tower the plane left, then removes it, REQ-RAD-014)
+#   python -m src.radar.airplane report-departed    (tells tower the plane left, REQ-RAD-014)
 # Python runs a file named __main__.py when you use "python -m" on its folder.
 
 import sys
@@ -149,7 +149,7 @@ def main():
         elif command == "report-landed":
             report(conn, report_landed, "has landed")
         elif command == "report-departed":
-            report(conn, report_departed, "has departed (removed from radar.db)")
+            report(conn, report_departed, "has departed")
         else:
             fake_reply(conn)
     except (KeyboardInterrupt, EOFError):  # Ctrl+C or Ctrl+D while it's asking

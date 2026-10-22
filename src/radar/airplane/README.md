@@ -22,7 +22,7 @@ python -m src.radar.airplane check-replies       # read tower's answers, save an
 ## Done with the runway (REQ-RAD-014)
 ```
 python -m src.radar.airplane report-landed       # tell tower the plane landed (plane stays in radar.db)
-python -m src.radar.airplane report-departed     # tell tower the plane left, then remove it from radar.db
+python -m src.radar.airplane report-departed     # tell tower the plane left (plane stays in radar.db)
 ```
 - Both ask for the aircraft ID. Tower uses these to free the plane's runway.
 - If radar has no plane with that ID, you get `Not sent: aircraft a1 does not exist` and nothing is sent.
@@ -52,12 +52,12 @@ python -m src.radar.airplane check-replies       # a1: runway R1 assigned
 python -m src.radar.airplane report-landed       # a1  ->  Told tower a1 has landed.
 python -m src.tower.messaging inbox              # tower -> last message is LANDED
 python -m src.radar.airplane list                # a1 is still there
-python -m src.radar.airplane report-departed     # a1  ->  Told tower a1 has departed (removed from radar.db).
+python -m src.radar.airplane report-departed     # a1  ->  Told tower a1 has departed.
 python -m src.tower.messaging inbox              # tower -> last message is DEPARTED
-python -m src.radar.airplane list                # a1 is gone
-python -m src.radar.airplane check-replies       # No replies from tower about radar's planes.
+python -m src.radar.airplane list                # a1 is still there, runway R1
+python -m src.radar.airplane check-replies       # a1: already on runway R1
 ```
-The last step shows the old "R1" reply is ignored: a departed plane doesn't get its runway back.
+The last step shows the old "R1" reply is harmless: it just sets the same runway again.
 
 ## Viewing the databases
 Nice formatting:

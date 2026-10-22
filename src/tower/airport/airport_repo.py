@@ -1,12 +1,13 @@
-# REQ-TOW-006, REQ-TOW-007
+# REQ-TOW-006, REQ-TOW-007, REQ-TOW-010
 # airport_repo.py — the ONLY tower file that talks to the airport database.
-# It can create the tables, add a new airport, and assign a runway. Freeing runways comes later.
+# It can create the tables, add a new airport, assign a runway, and free it again.
 #
 # How to use it:
 #   conn = sqlite3.connect("tower.db")      # open the database once
 #   create_tables(conn)                     # safe to call every time
 #   create_airport(conn, "JFK", 21000, 40.6413, -73.7781)
 #   assign_runway(conn, "JFK", "AA123")     # -> 1 (or None if every runway is taken)
+#   free_runway(conn, "JFK", "AA123")       # -> 1 (or None if AA123 had no runway)
 #   conn.close()                            # close it when you're done
 
 # sqlite3 is built into Python, so there's nothing extra to install.
@@ -130,4 +131,29 @@ def assign_runway(conn, airport_id, aircraft_id):
         runway_id = row[0]
 
         conn.execute( HQC[7], (aircraft_id, now(), airport_id, runway_id), )
+    return runway_id
+
+
+def free_runway(conn, airport_id, aircraft_id):
+    """Free the runway an airplane holds at this airport. Returns that runway_id, or None.
+
+    The runway goes back to "Available" with no airplane, so assign_runway() can give it out again.
+    None means the airplane had no runway here, so nothing changed. Freeing twice is harmless,
+    which matters because tower's inbox keeps every message, so the same "landed" can be read twice.
+    """
+    # "with conn" makes the look-up and the update one step: either both happen or neither does.
+    with conn:
+        row = conn.execute(
+            "SELECT runway_id FROM runways WHERE airport_id = ? AND aircraft_id = ?",
+            (airport_id, aircraft_id),
+        ).fetchone()
+        if row is None:  # this airplane has no runway here
+            return None
+        runway_id = row[0]
+
+        conn.execute(
+            "UPDATE runways SET status = 'Available', aircraft_id = NULL, timestamp = ? "
+            "WHERE airport_id = ? AND runway_id = ?",
+            (now(), airport_id, runway_id),
+        )
     return runway_id
