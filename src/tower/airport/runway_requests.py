@@ -16,7 +16,7 @@ from src.tower.airport.airport_repo import assign_runway
 REQUEST_LANDING = "REQUEST_LANDING"    # radar -> tower
 REQUEST_TAKEOFF = "REQUEST_TAKEOFF"    # radar -> tower
 RUNWAY_ASSIGNED = "RUNWAY_ASSIGNED"    # tower -> radar, includes "runway_id"
-NO_RUNWAY = "NO_RUNWAY"                # tower -> radar
+NO_RUNWAY       = "NO_RUNWAY"                # tower -> radar
 
 
 def read_tower_inbox():
