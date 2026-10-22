@@ -39,7 +39,7 @@ from another directory. Tower's existing message service still resolves
 
 - One page with a square airport schematic, 10 runway boxes, airport coordinates, perimeter, runway count, availability, and timestamps.
 - Recorded Radar aircraft positions around the centered airport schematic. Each marker shows ID, altitude (feet), and latitude / longitude; the list below adds the position timestamp, Radar status, and any matching Tower assignment. Select a marker or record to highlight it. Identical coordinates share a marker that cycles through aircraft when selected.
-- A north-up local coordinate plot with a fixed 10 km span. Outside-range aircraft remain in the list. The runway drawing is schematic, not geographically scaled; use **Runway detail** to expand it. Aircraft labels near the airport move beside the drawing with connector lines, or into the extra labels below the map when space is limited, so icons and labels never cover the runways. Coordinates in the records remain exact. No external map service or internet connection is needed.
+- A larger north-up coordinate plot with a fixed 200 km span, covering 100 km north / south / east / west of the airport. The range never expands automatically; outside-range aircraft remain in the list. The smaller centered runway drawing is schematic, not geographically scaled; use **Runway detail** to expand it. Aircraft icons stay at their actual projected coordinates. Only text labels move beside the drawing with connector lines, or below the map when space is limited. Runway text stays above icons so it remains readable. No external map service or internet connection is needed.
 - Actual airport and runway data from Tower, including aircraft IDs in both the runway cards and schematic. No Command demo airport is substituted when Tower is unavailable.
 - Both database contracts are supported: the original layout stores aircraft IDs in `runways`; the new layout uses `runway_assignments`. If the new table exists, it owns aircraft occupancy even when empty, so old aircraft IDs are ignored. The runway's own availability is still respected: an unassigned runway marked `Not Available` is not displayed as free.
 - Assignment labels distinguish landing assigned, landed, and takeoff assigned. Legacy data is labeled as having no aircraft phase information. Command displays the stored phase and does not repair or simulate Tower's transitions.
@@ -56,9 +56,9 @@ Start Radar from the same checkout root. To select another local Radar store, se
 
 Aircraft move on the map only when Radar updates their stored coordinates. A
 landing / takeoff request alone does not change their recorded location. An
-aircraft at the airport's coordinates uses an offset callout beside the centered
-runway drawing so it stays readable; use coordinates around the airport to
-demonstrate incoming and outgoing aircraft.
+aircraft at the airport's coordinates appears at the exact map center. Only its
+text label moves aside to keep the runway information readable; use coordinates
+around the airport to demonstrate incoming and outgoing aircraft.
 For the default airport center `(40.6413, -73.7781)`, `(40.6650, -73.8000)` is
 northwest of the airport and `(40.6200, -73.7500)` is southeast. Create aircraft
 through Radar's normal `python -m src.radar.airplane create` flow.
