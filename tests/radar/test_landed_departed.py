@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 
 import pytest
-from src.radar.airplane.aircraft_repo import create_aircraft, delete_aircraft, get_aircraft, init_db
+from src.radar.airplane.aircraft_repo import create_aircraft, delete_aircraft, get_aircraft, init_db, update_runway
 from src.radar.airplane.models import AircraftTelemetry
 from src.radar.airplane.runway_requests import check_tower_replies, report_departed, report_landed
 
@@ -35,8 +35,10 @@ def test_report_landed_sends_json_and_keeps_plane():
     assert get_aircraft(conn, "AA123") == before  # plane unchanged
 
 
-def test_report_departed_sends_json_and_deletes_plane():
+def test_report_departed_sends_json_and_keeps_plane():
     conn = setup_plane()
+    update_runway(conn, "AA123", "R1")
+    before = get_aircraft(conn, "AA123")
     sent = []
     report_departed(conn, "AA123", send=sent.append)
     message = json.loads(sent[0])
@@ -44,7 +46,8 @@ def test_report_departed_sends_json_and_deletes_plane():
     assert message["type"] == "DEPARTED"
     assert message["aircraft_id"] == "AA123"
     datetime.strptime(message["timestamp"], "%Y-%m-%dT%H:%M:%S")
-    assert get_aircraft(conn, "AA123") is None
+    assert get_aircraft(conn, "AA123") == before  # plane still there, runway_id unchanged
+    assert get_aircraft(conn, "AA123").runway_id == "R1"
 
 
 @pytest.mark.parametrize("report", [report_landed, report_departed])
@@ -56,25 +59,15 @@ def test_report_for_missing_plane_raises(report):
     assert sent == []  # nothing was sent to tower
 
 
-def test_departed_send_failure_keeps_plane():
-    conn = setup_plane()
-
-    def broken_send(content):
-        raise RuntimeError("messaging is down")
-
-    with pytest.raises(RuntimeError):
-        report_departed(conn, "AA123", send=broken_send)
-    assert get_aircraft(conn, "AA123") is not None  # kept so it can be retried
-
-
-def test_old_runway_reply_ignored_after_departure():
+def test_old_runway_reply_changes_nothing_after_departure():
     conn = setup_plane()
     old_reply = {"sender": "tower", "recipient": "radar",
                  "content": json.dumps({"type": "RUNWAY_ASSIGNED", "aircraft_id": "AA123", "runway_id": "R1"})}
     check_tower_replies(conn, get=lambda: [old_reply])
     report_departed(conn, "AA123", send=lambda content: None)
-    assert check_tower_replies(conn, get=lambda: [old_reply]) == []  # the same old reply comes back
-    assert get_aircraft(conn, "AA123") is None  # and the plane is not brought back
+    before = get_aircraft(conn, "AA123")
+    check_tower_replies(conn, get=lambda: [old_reply])  # the same old reply comes back
+    assert get_aircraft(conn, "AA123") == before  # nothing changed, not even the timestamp
 
 
 def test_delete_aircraft_missing_plane_raises():
@@ -93,6 +86,8 @@ def test_report_commands(tmp_path, monkeypatch, capsys):
     cli.report(conn, report_landed, "has landed")
     assert "Told tower AA123 has landed." in capsys.readouterr().out
     cli.report(conn, report_departed, "has departed")
-    assert get_aircraft(conn, "AA123") is None
-    cli.report(conn, report_landed, "has landed")  # the plane is gone now
+    assert "Told tower AA123 has departed." in capsys.readouterr().out
+    assert get_aircraft(conn, "AA123") is not None  # the plane is kept
+    monkeypatch.setattr("builtins.input", lambda question: "NOPE")
+    cli.report(conn, report_departed, "has departed")  # no such plane
     assert "Not sent" in capsys.readouterr().out

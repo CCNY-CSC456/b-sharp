@@ -1,7 +1,7 @@
 # REQ-RAD-012
 # aircraft_repo.py — the ONLY radar file that talks to the database.
 # It can save a new airplane, look one up, set its runway (REQ-RAD-013),
-# and delete it once it has departed (REQ-RAD-014).
+# and delete it (REQ-RAD-014).
 #
 # How to use it:
 #   conn = init_db("radar.db")     # open the database once
