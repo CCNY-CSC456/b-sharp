@@ -1,0 +1,93 @@
+# REQ-RAD-014
+# Automated tests for radar telling tower a plane is done with its runway. CI runs these with: pytest tests/radar
+# Every test uses an in-memory database and fake messaging, so tower doesn't need to run.
+
+import json
+from datetime import datetime
+
+import pytest
+from src.radar.airplane.aircraft_repo import create_aircraft, delete_aircraft, get_aircraft, init_db, update_runway
+from src.radar.airplane.models import AircraftTelemetry
+from src.radar.airplane.runway_requests import check_tower_replies, report_departed, report_landed
+
+OLD_TIME = datetime(2026, 1, 1, 12, 0, 0)
+
+
+def setup_plane(aircraft_id="AA123"):
+    conn = init_db(":memory:")
+    create_aircraft(conn, AircraftTelemetry(
+        aircraft_id=aircraft_id, latitude=40.7769, longitude=-73.8740,
+        altitude=0, status="Parked", timestamp=OLD_TIME,
+    ))
+    return conn
+
+
+def test_report_landed_sends_json_and_keeps_plane():
+    conn = setup_plane()
+    before = get_aircraft(conn, "AA123")
+    sent = []
+    report_landed(conn, "AA123", send=sent.append)
+    message = json.loads(sent[0])
+    assert set(message) == {"type", "aircraft_id", "timestamp"}
+    assert message["type"] == "LANDED"
+    assert message["aircraft_id"] == "AA123"
+    datetime.strptime(message["timestamp"], "%Y-%m-%dT%H:%M:%S")  # fails if the format is wrong
+    assert get_aircraft(conn, "AA123") == before  # plane unchanged
+
+
+def test_report_departed_sends_json_and_keeps_plane():
+    conn = setup_plane()
+    update_runway(conn, "AA123", "R1")
+    before = get_aircraft(conn, "AA123")
+    sent = []
+    report_departed(conn, "AA123", send=sent.append)
+    message = json.loads(sent[0])
+    assert set(message) == {"type", "aircraft_id", "timestamp"}
+    assert message["type"] == "DEPARTED"
+    assert message["aircraft_id"] == "AA123"
+    datetime.strptime(message["timestamp"], "%Y-%m-%dT%H:%M:%S")
+    assert get_aircraft(conn, "AA123") == before  # plane still there, runway_id unchanged
+    assert get_aircraft(conn, "AA123").runway_id == "R1"
+
+
+@pytest.mark.parametrize("report", [report_landed, report_departed])
+def test_report_for_missing_plane_raises(report):
+    conn = setup_plane()
+    sent = []
+    with pytest.raises(ValueError):
+        report(conn, "NOPE", send=sent.append)
+    assert sent == []  # nothing was sent to tower
+
+
+def test_old_runway_reply_changes_nothing_after_departure():
+    conn = setup_plane()
+    old_reply = {"sender": "tower", "recipient": "radar",
+                 "content": json.dumps({"type": "RUNWAY_ASSIGNED", "aircraft_id": "AA123", "runway_id": "R1"})}
+    check_tower_replies(conn, get=lambda: [old_reply])
+    report_departed(conn, "AA123", send=lambda content: None)
+    before = get_aircraft(conn, "AA123")
+    check_tower_replies(conn, get=lambda: [old_reply])  # the same old reply comes back
+    assert get_aircraft(conn, "AA123") == before  # nothing changed, not even the timestamp
+
+
+def test_delete_aircraft_missing_plane_raises():
+    with pytest.raises(ValueError):
+        delete_aircraft(init_db(":memory:"), "NOPE")
+
+
+# --- the report-landed / report-departed menu commands ---
+
+def test_report_commands(tmp_path, monkeypatch, capsys):
+    from src.radar.airplane import __main__ as cli
+    from src.tower.messaging import db as tower_db
+    monkeypatch.setattr(tower_db, "DB", str(tmp_path / "test.db"))  # don't touch the real messages.db
+    conn = setup_plane()
+    monkeypatch.setattr("builtins.input", lambda question: "AA123")
+    cli.report(conn, report_landed, "has landed")
+    assert "Told tower AA123 has landed." in capsys.readouterr().out
+    cli.report(conn, report_departed, "has departed")
+    assert "Told tower AA123 has departed." in capsys.readouterr().out
+    assert get_aircraft(conn, "AA123") is not None  # the plane is kept
+    monkeypatch.setattr("builtins.input", lambda question: "NOPE")
+    cli.report(conn, report_departed, "has departed")  # no such plane
+    assert "Not sent" in capsys.readouterr().out

@@ -19,6 +19,8 @@ REQUEST_LANDING = "REQUEST_LANDING"    # radar -> tower
 REQUEST_TAKEOFF = "REQUEST_TAKEOFF"    # radar -> tower
 RUNWAY_ASSIGNED = "RUNWAY_ASSIGNED"    # tower -> radar, includes "runway_id"
 NO_RUNWAY = "NO_RUNWAY"                # tower -> radar
+LANDED = "LANDED"                      # radar -> tower, plane is off the runway (REQ-RAD-014)
+DEPARTED = "DEPARTED"                  # radar -> tower, plane has left (REQ-RAD-014)
 
 
 def send_to_tower(content):
@@ -59,6 +61,20 @@ def request_landing(conn, aircraft_id, send=send_to_tower):
 def request_takeoff(conn, aircraft_id, send=send_to_tower):
     return request_runway(conn, aircraft_id, REQUEST_TAKEOFF, send)
 
+
+
+# --- radar -> tower: done with the runway (REQ-RAD-014) ---
+
+def report_landed(conn, aircraft_id, send=send_to_tower):
+    """Tell tower the plane has landed, so tower can free its runway. The plane is not changed."""
+    return request_runway(conn, aircraft_id, LANDED, send)
+
+
+def report_departed(conn, aircraft_id, send=send_to_tower):
+    """Tell tower the plane has departed, so tower can free its runway. The plane is not changed."""
+    # The plane is kept so command can still see it. Old tower replies are harmless: they just
+    # set the same runway again, and a new request gets a new reply that overwrites runway_id.
+    return request_runway(conn, aircraft_id, DEPARTED, send)
 
 # --- tower -> radar ---
 

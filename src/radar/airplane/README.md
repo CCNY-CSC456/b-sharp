@@ -1,4 +1,4 @@
-# Airplane commands (REQ-RAD-012, REQ-RAD-013)
+# Airplane commands (REQ-RAD-012, REQ-RAD-013, REQ-RAD-014)
 
 Run everything from the repo root (the `b-sharp` folder), with the venv on:
 ```
@@ -19,6 +19,14 @@ python -m src.radar.airplane fake-tower-reply    # TESTING: answer as tower (emp
 python -m src.radar.airplane check-replies       # read tower's answers, save any runway
 ```
 
+## Done with the runway (REQ-RAD-014)
+```
+python -m src.radar.airplane report-landed       # tell tower the plane landed (plane stays in radar.db)
+python -m src.radar.airplane report-departed     # tell tower the plane left (plane stays in radar.db)
+```
+- Both ask for the aircraft ID. Tower uses these to free the plane's runway.
+- If radar has no plane with that ID, you get `Not sent: aircraft a1 does not exist` and nothing is sent.
+
 ## Messages (tower's messaging)
 ```
 python -m src.tower.messaging send               # asks sender, recipient, message
@@ -34,6 +42,22 @@ python -m src.radar.airplane fake-tower-reply    # a1, R1
 python -m src.radar.airplane check-replies       # a1: runway R1 assigned
 python -m src.radar.airplane list                # Runway column shows R1
 ```
+
+## Walkthrough: land, then depart (REQ-RAD-014)
+```
+python -m src.radar.airplane create              # a1, 40.77, -73.87, 2000, Landing
+python -m src.radar.airplane request-landing     # a1
+python -m src.radar.airplane fake-tower-reply    # a1, R1
+python -m src.radar.airplane check-replies       # a1: runway R1 assigned
+python -m src.radar.airplane report-landed       # a1  ->  Told tower a1 has landed.
+python -m src.tower.messaging inbox              # tower -> last message is LANDED
+python -m src.radar.airplane list                # a1 is still there
+python -m src.radar.airplane report-departed     # a1  ->  Told tower a1 has departed.
+python -m src.tower.messaging inbox              # tower -> last message is DEPARTED
+python -m src.radar.airplane list                # a1 is still there, runway R1
+python -m src.radar.airplane check-replies       # a1: already on runway R1
+```
+The last step shows the old "R1" reply is harmless: it just sets the same runway again.
 
 ## Viewing the databases
 Nice formatting:
@@ -54,6 +78,7 @@ python -c "import sqlite3; [print(r) for r in sqlite3.connect('file:messages.db?
 ## Tests
 ```
 pytest tests/radar -v
+pytest tests/radar/test_landed_departed.py -v   # just the LANDED/DEPARTED tests
 pytest tests/tower -v
 ```
 
