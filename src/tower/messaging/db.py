@@ -43,14 +43,14 @@ def get_messages(recipient):
       (recipient,)
     ).fetchall()
 
-    if rows: # extract rowids to perform a targeted bulk UPDATE
-      row_ids = [r[0] for r in rows]
-      placeholders = ",".join("?" * len(row_ids))
-
-      cursor.execute(
-        f"UPDATE messages SET recipient = recipient || '-READ' WHERE rowid IN ({placeholders})",
-        row_ids
-      )
+    # if rows: # extract rowids to perform a targeted bulk UPDATE
+    #   row_ids = [r[0] for r in rows]
+    #   placeholders = ",".join("?" * len(row_ids))
+    #
+    #   cursor.execute(
+    #     f"UPDATE messages SET recipient = recipient || '-READ' WHERE rowid IN ({placeholders})",
+    #     row_ids
+    #   )
 
   conn.close()
 
