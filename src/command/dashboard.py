@@ -1,4 +1,4 @@
-"""REQ-OPS-001 / REQ-OPS-002 / REQ-OPS-003 / REQ-OPS-004: airport visibility, Tower messaging, the Airfield palette, and the layout.
+"""REQ-OPS-001 / REQ-OPS-002 / REQ-OPS-003 / REQ-OPS-004 / REQ-OPS-005: Command visibility.
 
 The palette's colors (REQ-OPS-003) are tokens at the top of dashboard.html's <style> block.
 The header row and three panel layout (REQ-OPS-004) live in dashboard.html too.
@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from src.command.airport import get_airport_state
+from src.command.messages import get_command_messages
 from src.tower.messaging import inbox, send
 from src.tower.messaging.db import init_db
 
@@ -52,3 +53,9 @@ def dashboard():
 def airport_state():
     """Return the airport and runway snapshot."""
     return get_airport_state()
+
+
+@app.get("/api/command-messages")
+def command_messages():
+    """Return a stable inbox snapshot without marking Tower's messages as read."""
+    return get_command_messages()
