@@ -13,3 +13,5 @@
 | REQ-OPS-001 | Command | Unified airport visibility dashboard | src/command/dashboard.py, src/command/airport.py | tests/command/test_airport.py, tests/command/test_dashboard.py | |
 | REQ-OPS-002 | Command | Tower messaging in the dashboard | src/command/dashboard.py | tests/command/test_dashboard.py | |
 | REQ-RAD-013 | Radar | Integration with Tower | src/radar/airplane/runway_requests.py | tests/radar/test_runway_requests.py | |
+| REQ-RAD-014 | Radar | Change Aircraft Altitude | src/radar/airplane/aircraft_repo.py, src/radar/airplane/__main__.py | tests/radar/test_altitude.py | |
+| REQ-RAD-015 | Radar | Send Aircraft Info to Tower | src/radar/airplane/runway_requests.py, src/radar/airplane/__main__.py | tests/radar/test_aircraft_info.py | |

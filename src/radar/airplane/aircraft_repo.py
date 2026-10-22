@@ -1,6 +1,7 @@
 # REQ-RAD-012
 # aircraft_repo.py — the ONLY radar file that talks to the database.
-# It can save a new airplane, look one up, and set its runway (REQ-RAD-013).
+# It can save a new airplane, look one up, set its runway (REQ-RAD-013),
+# and change its altitude (REQ-RAD-014).
 #
 # How to use it:
 #   conn = init_db("radar.db")     # open the database once
@@ -90,5 +91,22 @@ def update_runway(conn, aircraft_id, runway_id):
         (runway_id, now().strftime(TIME_FORMAT), aircraft_id),
     )
     if cursor.rowcount == 0:  # rowcount = how many rows were changed
+        raise ValueError(f"aircraft {aircraft_id} does not exist")
+    conn.commit()
+
+
+# REQ-RAD-014
+def update_altitude(conn, aircraft_id, altitude):
+    """Set the plane's altitude (feet) and refresh its timestamp to now.
+
+    Raises ValueError if the altitude is negative or there is no plane with this ID.
+    """
+    if altitude < 0:
+        raise ValueError("altitude can't be negative")
+    cursor = conn.execute(
+        "UPDATE aircraft SET altitude = ?, timestamp = ? WHERE aircraft_id = ?",
+        (altitude, now().strftime(TIME_FORMAT), aircraft_id),
+    )
+    if cursor.rowcount == 0:
         raise ValueError(f"aircraft {aircraft_id} does not exist")
     conn.commit()

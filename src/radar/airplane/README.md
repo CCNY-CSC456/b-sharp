@@ -1,4 +1,4 @@
-# Airplane commands (REQ-RAD-012, REQ-RAD-013)
+# Airplane commands (REQ-RAD-012 to REQ-RAD-015)
 
 Run everything from the repo root (the `b-sharp` folder), with the venv on:
 ```
@@ -9,6 +9,8 @@ source venv/bin/activate
 ```
 python -m src.radar.airplane create              # asks ID, latitude, longitude, altitude, status
 python -m src.radar.airplane list                # table of every plane in radar.db
+python -m src.radar.airplane set-altitude        # asks ID and new altitude (feet), sends the update to tower
+python -m src.radar.airplane send-info           # asks ID, sends that plane's current data to tower
 ```
 
 ## Runways (radar <-> tower)
