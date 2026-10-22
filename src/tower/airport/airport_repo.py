@@ -98,6 +98,23 @@ CREATE TABLE IF NOT EXISTS runway_assignments (
 );
 """
 
+HQC[12] = """
+CREATE VIEW IF NOT EXISTS runway_assignments_json AS
+SELECT json_pretty(
+    json_group_array(
+        json_object(
+            'airport_id', airport_id,
+            'runway_id', runway_id,
+            'aircraft_id', aircraft_id,
+            'status', status,
+            'assigned_at', assigned_at
+        )
+    )
+) AS json_dump
+FROM runway_assignments;
+"""
+
+
 
 # NOTE: "with conn:" blocks are for making things transactional(*)          *ish
 
@@ -114,6 +131,7 @@ def create_tables(conn):
         conn.execute( HQC[1] )
         conn.execute( HQC[10] )
         conn.execute( HQC[11] )
+        conn.execute( HQC[12] )
         conn.commit()
     except sqlite3.Error:
         return False
