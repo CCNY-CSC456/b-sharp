@@ -11,5 +11,7 @@
 | REQ-RAD-014 | Radar | Report Landed/Departed to Tower | src/radar/airplane/runway_requests.py, src/radar/airplane/aircraft_repo.py | tests/radar/test_landed_departed.py | |
 | REQ-TOW-010 | Tower | Free Runway | src/tower/airport/airport_repo.py | tests/tower/test_free_runway.py | |
 | REQ-TOW-011 | Tower | Takeoff Clearance and Departures | src/tower/airport/runway_requests.py, src/tower/airport/__main__.py | tests/tower/test_departures.py | |
-<!--| REQ-TOW-015 | Tower | Persistent Polling Process Loop | | |-->
+| REQ-OPS-003 | Command | Airfield color palette | src/command/dashboard.html, src/command/dashboard.py | tests/command/test_palette.py | |
+| REQ-OPS-004 | Command | Dashboard layout: header row and three panels | src/command/dashboard.html, src/command/dashboard.py | tests/command/test_layout.py | |
+| REQ-OPS-005 | Command | Read local Tower state and display assigned aircraft | src/command/airport.py, src/command/messages.py, src/command/dashboard.py, src/command/dashboard.html | tests/command/test_airport.py, tests/command/test_dashboard.py | |
 

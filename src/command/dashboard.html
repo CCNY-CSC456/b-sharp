@@ -3,15 +3,48 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#0c1620">
-    <title>Command | Airport Visibility</title>
+    <meta name="theme-color" content="#1c1d1f">
+    <title>b-sharp ATC Midterm Demo | Command</title>
     <style>
+      /* REQ-OPS-003: Airfield color palette on charcoal.
+         Every color lives here as a token. Rules below only use var(--...). */
       :root {
         color-scheme: dark;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #0c1620;
-        color: #edf4f7;
         font-synthesis: none;
+
+        /* Charcoal neutrals (no color tint) */
+        --bg: #1c1d1f;
+        --panel: #232426;
+        --panel-raised: #2a2b2e;
+        --field: #18191a;
+        --line: #37383b;
+        --line-strong: #505156;
+        --grid: rgba(255, 255, 255, .045);
+        --text: #ecece8;
+        --text-soft: #c9cac6;
+        --muted: #a3a4a1;
+
+        /* Runway status */
+        --available: #6fd08c;
+        --available-bg: #1d2b22;
+        --available-line: #2f5a3d;
+        --not-available: #b18cff;
+        --not-available-bg: #2b2538;
+        --not-available-line: #6a55a0;
+
+        /* Warnings and errors */
+        --danger: #ff6b6b;
+        --danger-bg: #3a2224;
+        --danger-line: #7a3a3d;
+
+        /* Accent: Send button, logo mark, focus ring */
+        --accent: #d6d6d2;
+        --on-accent: #1c1d1f;
+        --focus-ring: rgba(214, 214, 210, .18);
+
+        background: var(--bg);
+        color: var(--text);
       }
 
       * { box-sizing: border-box; }
@@ -19,135 +52,142 @@
       body {
         margin: 0;
         min-width: 320px;
-        background:
-          radial-gradient(ellipse at 12% 0%, rgba(36, 123, 129, .18), transparent 38rem),
-          #0c1620;
+        background: var(--bg);
       }
 
       button, input { font: inherit; }
 
       .shell { max-width: 1440px; margin: 0 auto; padding: 28px clamp(18px, 4vw, 54px) 48px; }
 
-      .topbar, .heading, .section-heading, .message-meta {
+      .topbar, .heading, .message-meta {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 16px;
       }
 
-      .topbar { padding-bottom: 24px; border-bottom: 1px solid #24343e; }
+      .topbar { padding-bottom: 24px; border-bottom: 1px solid var(--line); }
 
-      .brand { display: flex; align-items: center; gap: 12px; color: #b8c8cf; font-size: 12px; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; }
+      .brand { display: flex; align-items: center; gap: 12px; color: var(--text-soft); font-size: 12px; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; }
 
-      .brand-mark { display: grid; place-items: center; width: 31px; height: 31px; border: 1px solid #4c9e9c; border-radius: 9px; color: #78d5c5; font-size: 16px; }
+      .brand-mark { display: grid; place-items: center; width: 31px; height: 31px; border: 1px solid var(--accent); border-radius: 9px; color: var(--accent); font-size: 16px; }
 
-      .metric-label, .updated-label { color: #8297a2; font-size: 11px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+      .metric-label { display: block; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
 
-      .status-pill { display: inline-flex; align-items: center; gap: 9px; border: 1px solid #2c5d50; border-radius: 999px; padding: 9px 12px; color: #9fe5bb; background: #102a25; font-size: 11px; font-weight: 750; letter-spacing: .1em; }
+      .status-pill { display: inline-flex; align-items: center; gap: 9px; border: 1px solid var(--available-line); border-radius: 999px; padding: 9px 12px; color: var(--available); background: var(--available-bg); font-size: 11px; font-weight: 750; letter-spacing: .1em; }
 
       .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 12px currentColor; }
 
-      .status-pill.degraded { border-color: #745531; color: #f0c17d; background: #302519; }
+      .status-pill.degraded { border-color: var(--danger-line); color: var(--danger); background: var(--danger-bg); }
 
-      .heading { align-items: flex-end; padding: 34px 0 26px; }
+      /* REQ-OPS-004: the heading and the four airport details share one row. */
+      .heading { align-items: flex-end; flex-wrap: wrap; gap: 14px 32px; padding: 30px 0 24px; }
 
       h1 { margin: 0; font-size: clamp(27px, 4vw, 39px); letter-spacing: -.04em; font-weight: 650; }
 
-      .updated { min-width: 190px; text-align: right; }
+      .metrics { display: flex; flex-wrap: wrap; gap: 12px 36px; margin: 0; }
 
-      .updated-value { display: block; margin-top: 7px; color: #d5e0e5; font-size: 12px; font-variant-numeric: tabular-nums; }
+      .panel { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: 0 14px 35px rgba(0, 0, 0, .12); }
 
-      .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+      .metric { margin: 0; }
 
-      .metric, .panel { border: 1px solid #24343e; border-radius: 14px; background: rgba(17, 30, 40, .88); box-shadow: 0 14px 35px rgba(0, 0, 0, .12); }
+      .metric-value { display: block; margin: 6px 0 0; color: var(--text); font-size: 15px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
 
-      .metric { min-height: 105px; padding: 17px 18px; }
-
-      .metric-value { display: block; margin-top: 12px; color: #eef6f8; font-size: 20px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-
-      .metric-value.small { font-size: 15px; }
-
-      .content-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .85fr); gap: 16px; margin-top: 16px; }
+      /* REQ-OPS-004: map (widest), runway availability, Tower messages. */
+      .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 280px) minmax(280px, 340px); align-items: stretch; gap: 16px; margin-top: 8px; }
 
       .panel { padding: 21px; }
 
-      .section-heading { margin-bottom: 17px; }
+      .section-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 16px; }
 
       h2 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
 
-      .section-note { color: #8297a2; font-size: 12px; }
+      .section-note { color: var(--muted); font-size: 12px; }
 
       .airport-map {
         position: relative;
         display: grid;
         place-items: center;
-        width: min(100%, 500px);
+        width: min(100%, 560px);
         margin: 0 auto;
         aspect-ratio: 1 / 1;
         overflow: hidden;
-        border: 1px solid #30444f;
+        border: 1px solid var(--line);
         border-radius: 11px;
-        background-color: #101f28;
-        background-image: linear-gradient(rgba(110, 143, 151, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(110, 143, 151, .07) 1px, transparent 1px);
+        background-color: var(--field);
+        background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
         background-size: 26px 26px;
       }
 
-      .airport-map::before { position: absolute; inset: 7%; border: 2px solid #70c6b6; border-radius: 3px; content: ""; box-shadow: inset 0 0 28px rgba(75, 178, 159, .06), 0 0 18px rgba(75, 178, 159, .08); }
+      .airport-map::before { position: absolute; inset: 7%; border: 2px solid var(--muted); border-radius: 3px; content: ""; }
 
-      .map-label { position: absolute; z-index: 2; top: 9%; left: 10%; color: #79b7ad; font-size: 9px; font-weight: 750; letter-spacing: .15em; text-transform: uppercase; }
+      .map-label { position: absolute; z-index: 2; top: 9%; left: 10%; color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .15em; text-transform: uppercase; }
 
       #map-runways { position: absolute; inset: 20% 12% 12%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; }
 
-      .map-runway { display: grid; place-items: center; min-width: 0; border: 1px solid #71838b; border-radius: 5px; color: #e8eff2; background: #273640; box-shadow: 0 7px 18px rgba(0, 0, 0, .22); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
-      .map-runway.unavailable { border-color: #bd8b4d; color: #f3ca8b; background: #403222; }
+      .map-runway { display: grid; place-items: center; min-width: 0; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--text); background: var(--panel-raised); box-shadow: 0 7px 18px rgba(0, 0, 0, .22); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+      .map-runway.unavailable { border-color: var(--not-available-line); color: var(--not-available); background: var(--not-available-bg); }
+      .map-runway { align-content: center; gap: 2px; padding: 3px; }
+      .map-aircraft { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+      .map-aircraft.empty { color: var(--muted); font-size: 9px; font-weight: 500; }
+      .source-note { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+      .stale-data .airport-map, .stale-data .runway-list { opacity: .6; }
 
-      figcaption { margin-top: 12px; color: #748a95; font-size: 11px; text-align: center; }
+      figcaption { margin-top: 12px; color: var(--muted); font-size: 11px; text-align: center; }
 
-      .runway-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 9px; margin: 18px 0 0; padding: 0; list-style: none; }
+      .runway-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
 
-      .runway-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 5px 10px; border: 1px solid #2a3c46; border-radius: 9px; padding: 11px 12px; background: #12212b; }
+      .runway-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 5px 10px; border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px; background: var(--panel-raised); }
 
-      .runway-id { grid-column: 1; grid-row: 1; color: #e7eff2; font-size: 12px; font-weight: 650; white-space: nowrap; }
+      .runway-id { grid-column: 1; grid-row: 1; color: var(--text); font-size: 12px; font-weight: 650; white-space: nowrap; }
 
-      .runway-updated { grid-column: 1 / -1; grid-row: 2; color: #8297a2; font-size: 9px; font-variant-numeric: tabular-nums; }
+      .runway-updated { grid-column: 1 / -1; grid-row: 3; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+      .runway-aircraft { grid-column: 1 / -1; grid-row: 2; display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; color: var(--text-soft); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+      .runway-aircraft strong { color: var(--text); }
 
-      .runway-status { grid-column: 2; grid-row: 1; color: #9fe5bb; font-size: 10px; font-weight: 750; text-align: right; text-transform: uppercase; letter-spacing: .06em; }
+      .runway-status { grid-column: 2; grid-row: 1; color: var(--available); font-size: 10px; font-weight: 750; text-align: right; text-transform: uppercase; letter-spacing: .06em; }
 
-      .runway-status.unavailable { color: #efbd78; }
+      .runway-status.unavailable { color: var(--not-available); }
 
       .message-panel { display: flex; min-height: 100%; flex-direction: column; }
 
-      .messages { display: flex; flex: 1; flex-direction: column; gap: 9px; min-height: 190px; max-height: 370px; overflow-y: auto; margin: 0; padding: 0 2px 3px 0; list-style: none; }
+      .messages { display: flex; flex: 1; flex-direction: column; gap: 9px; min-height: 190px; max-height: 520px; overflow-y: auto; margin: 0; padding: 0 2px 3px 0; list-style: none; }
 
-      .message { border: 1px solid #273943; border-radius: 10px; padding: 12px 13px; background: #12212b; }
+      .message { border: 1px solid var(--line); border-radius: 10px; padding: 12px 13px; background: var(--panel-raised); }
 
-      .message-meta { justify-content: flex-start; color: #8297a2; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+      .message-meta { justify-content: flex-start; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 
-      .message-body { margin: 8px 0 0; color: #d9e4e8; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+      .message-body { margin: 8px 0 0; color: var(--text); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 
-      .empty-state { display: grid; flex: 1; place-items: center; min-height: 190px; color: #8297a2; font-size: 13px; text-align: center; }
+      .empty-state { display: grid; flex: 1; place-items: center; min-height: 190px; color: var(--muted); font-size: 13px; text-align: center; }
 
-      .message-form { margin-top: 17px; padding-top: 16px; border-top: 1px solid #253740; }
+      .message-form { margin-top: 17px; padding-top: 16px; border-top: 1px solid var(--line); }
 
-      .form-label { display: block; margin-bottom: 8px; color: #b9c8ce; font-size: 12px; font-weight: 600; }
+      .form-label { display: block; margin-bottom: 8px; color: var(--text-soft); font-size: 12px; font-weight: 600; }
 
-      .form-row { display: flex; gap: 8px; }
+      .form-row { display: flex; flex-direction: column; gap: 8px; }
 
-      .message-input { min-width: 0; flex: 1; border: 1px solid #314650; border-radius: 9px; padding: 11px 12px; outline: none; color: #f1f6f7; background: #0d1a22; }
+      .message-input { min-width: 0; flex: 1; border: 1px solid var(--line-strong); border-radius: 9px; padding: 11px 12px; outline: none; color: var(--text); background: var(--field); }
 
-      .message-input:focus { border-color: #56a99e; box-shadow: 0 0 0 3px rgba(86, 169, 158, .12); }
+      .message-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
 
-      .send-button { border: 1px solid #4d9c91; border-radius: 9px; padding: 0 14px; color: #09221e; background: #7dd1c0; font-size: 12px; font-weight: 750; cursor: pointer; }
+      .send-button { border: 1px solid var(--accent); border-radius: 9px; padding: 10px 16px; align-self: flex-end; color: var(--on-accent); background: var(--accent); font-size: 12px; font-weight: 750; cursor: pointer; }
 
       .send-button:disabled { opacity: .55; cursor: wait; }
 
-      .feedback { min-height: 17px; margin: 9px 0 0; color: #91a4ae; font-size: 11px; }
+      .feedback { min-height: 17px; margin: 9px 0 0; color: var(--muted); font-size: 11px; }
 
-      .feedback.error { color: #f0bb77; }
+      .feedback.error { color: var(--danger); }
 
-      .degraded-message { margin: 13px 0 0; border: 1px solid #745531; border-radius: 9px; padding: 11px 12px; color: #f0c17d; background: #302519; font-size: 12px; line-height: 1.45; }
+      .degraded-message { margin: 13px 0 0; border: 1px solid var(--danger-line); border-radius: 9px; padding: 11px 12px; color: var(--danger); background: var(--danger-bg); font-size: 12px; line-height: 1.45; }
 
-      @media (max-width: 880px) {
+      /* REQ-OPS-004: medium screens put the map on top, phones stack all three. */
+      @media (max-width: 1180px) {
+        .content-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .map-panel { grid-column: 1 / -1; }
+      }
+
+      @media (max-width: 720px) {
         .content-grid { grid-template-columns: minmax(0, 1fr); }
         .message-panel { min-height: 430px; }
       }
@@ -156,12 +196,9 @@
         .shell { padding-top: 18px; }
         .topbar { flex-wrap: wrap; }
         .heading { align-items: flex-start; flex-direction: column; gap: 16px; }
-        .updated { text-align: left; }
-        .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .metric { min-height: 90px; padding: 14px; }
-        .metric-value { font-size: 17px; }
+        .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; width: 100%; }
+        .metric:first-child { grid-column: 1 / -1; }
         .panel { padding: 16px; }
-        .section-note { max-width: 110px; text-align: right; }
       }
 
       @media (prefers-reduced-motion: no-preference) {
@@ -179,44 +216,47 @@
         </div>
       </header>
 
-      <section class="heading" aria-labelledby="airport-name">
-        <h1 id="airport-name">Loading airport state</h1>
-        <div class="updated">
-          <span class="updated-label">Demo initialized · UTC</span>
-          <time class="updated-value" id="airport-updated">—</time>
-        </div>
-      </section>
-
-      <section class="metrics" aria-label="Airport details">
-        <article class="metric"><span class="metric-label">Airport ID</span><strong id="airport-id" class="metric-value">—</strong></article>
-        <article class="metric"><span class="metric-label">Perimeter</span><strong id="airport-perimeter" class="metric-value small">—</strong></article>
-        <article class="metric"><span class="metric-label">Coordinates</span><strong id="airport-coordinates" class="metric-value small">—</strong></article>
-        <article class="metric"><span class="metric-label">Runways</span><strong id="airport-runway-count" class="metric-value">—</strong></article>
+      <section class="heading" aria-labelledby="page-title">
+        <h1 id="page-title">b-sharp ATC Midterm Demo</h1>
+        <dl class="metrics" aria-label="Airport details">
+          <div class="metric"><dt class="metric-label">Coordinates</dt><dd id="airport-coordinates" class="metric-value">—</dd></div>
+          <div class="metric"><dt class="metric-label">Perimeter</dt><dd id="airport-perimeter" class="metric-value">—</dd></div>
+          <div class="metric"><dt class="metric-label">Runways</dt><dd id="airport-runway-count" class="metric-value">—</dd></div>
+          <div class="metric"><dt class="metric-label">Latest record time</dt><dd class="metric-value"><time id="airport-updated">—</time></dd></div>
+        </dl>
       </section>
 
       <div class="content-grid">
-        <section class="panel" aria-labelledby="map-title">
+        <section id="map-panel" class="panel map-panel" aria-labelledby="map-title">
           <div class="section-heading">
             <h2 id="map-title">Airport perimeter</h2>
-            <span class="section-note">Runway availability</span>
+            <span id="airport-source" class="section-note" role="status">Waiting for Tower data</span>
           </div>
           <figure style="margin:0">
             <div class="airport-map" role="img" aria-label="Schematic airport perimeter with runway positions">
-              <span class="map-label">Perimeter</span>
+              <span id="map-label" class="map-label">Airport</span>
               <div id="map-runways"></div>
             </div>
-            <figcaption>Schematic view · runway placement is not to scale</figcaption>
+            <figcaption>Schematic view · aircraft shown at their assigned runways, not geographic positions</figcaption>
           </figure>
+          <p id="airport-error" class="degraded-message" role="alert" hidden></p>
+        </section>
+
+        <section id="runway-panel" class="panel runway-panel" aria-labelledby="runways-title">
+          <div class="section-heading">
+            <h2 id="runways-title">Runway availability</h2>
+            <span id="runway-summary" class="section-note">—</span>
+            <p class="source-note">Assigned aircraft only · record times are shown as supplied by Tower.</p>
+          </div>
           <ul id="runway-list" class="runway-list" aria-label="Runway statuses">
             <li class="runway-card"><span class="runway-id">Waiting for airport data</span></li>
           </ul>
-          <p id="airport-error" class="degraded-message" hidden></p>
         </section>
 
-        <section class="panel message-panel" aria-labelledby="messages-title">
+        <section id="message-panel" class="panel message-panel" aria-labelledby="messages-title">
           <div class="section-heading">
             <h2 id="messages-title">Tower messages</h2>
-            <span class="section-note">Command inbox · send to Tower</span>
+            <span class="section-note">Tower ↔ Command</span>
           </div>
           <ol id="message-list" class="messages" aria-live="polite">
             <li class="empty-state">Loading messages…</li>
@@ -226,7 +266,7 @@
             <label class="form-label" for="message-input">Send a message to Tower</label>
             <div class="form-row">
               <input id="message-input" class="message-input" name="content" maxlength="500" placeholder="Enter an operational note…" autocomplete="off" required>
-              <button id="send-button" class="send-button" type="submit">Send</button>
+              <button id="send-button" class="send-button" type="submit">Send to Tower</button>
             </div>
             <p id="message-feedback" class="feedback" role="status" aria-live="polite"></p>
           </form>
@@ -243,16 +283,51 @@
       const messageList = document.getElementById("message-list");
       const messageFeedback = document.getElementById("message-feedback");
       const sendButton = document.getElementById("send-button");
+      let lastAirportSnapshot = null;
+      let refreshing = false;
 
       async function getJson(url) {
-        const response = await fetch(url, { headers: { Accept: "application/json" } });
-        if (!response.ok) throw new Error(`Request failed (${response.status})`);
-        return response.json();
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 5000);
+        try {
+          const response = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal, cache: "no-store" });
+          if (!response.ok) throw new Error(`Request failed (${response.status})`);
+          return await response.json();
+        } finally {
+          window.clearTimeout(timeout);
+        }
       }
 
       function setStatus(degraded) {
         systemStatus.classList.toggle("degraded", degraded);
         systemStatusText.textContent = degraded ? "DATA LINKS DEGRADED" : "DATA LINKS NORMAL";
+      }
+
+      // REQ-OPS-004: "RWY 01" style labels, matching the runway availability column.
+      function runwayLabel(runway) {
+        return `RWY ${String(runway.runway_id).padStart(2, "0")}`;
+      }
+
+      // REQ-OPS-004: 40.6413° N / 73.7781° W
+      function formatCoordinates(latitude, longitude) {
+        const lat = `${Math.abs(latitude).toFixed(4)}° ${latitude >= 0 ? "N" : "S"}`;
+        const lon = `${Math.abs(longitude).toFixed(4)}° ${longitude >= 0 ? "E" : "W"}`;
+        return `${lat} / ${lon}`;
+      }
+
+      function assignmentLabel(runway) {
+        const labels = {
+          LANDING_ASSIGNED: "Landing assigned",
+          LANDED: "Landed",
+          TAKEOFF_ASSIGNED: "Takeoff assigned",
+        };
+        return labels[runway.assignment_status] || "Assigned · phase unavailable";
+      }
+
+      function setRecordTime(node, timestamp, prefix = "") {
+        node.textContent = timestamp ? `${prefix}${timestamp}` : "Timestamp unavailable";
+        if (timestamp) node.dateTime = timestamp;
+        else node.removeAttribute("datetime");
       }
 
       function createRunway(runway, compact = false) {
@@ -264,36 +339,60 @@
         if (compact) {
           const id = document.createElement("span");
           id.className = "runway-id";
-          id.textContent = `Runway ${runway.runway_id}`;
+          id.textContent = runwayLabel(runway);
           const status = document.createElement("span");
           status.className = `runway-status${unavailable ? " unavailable" : ""}`;
           status.textContent = runway.status;
           const updated = document.createElement("time");
           updated.className = "runway-updated";
-          updated.textContent = runway.timestamp;
-          updated.dateTime = `${runway.timestamp}Z`;
+          setRecordTime(updated, runway.assigned_at || runway.timestamp, runway.assigned_at ? "Assigned " : "Recorded ");
           node.append(id, updated, status);
-          node.title = `Updated ${runway.timestamp} UTC`;
+          if (runway.aircraft_id) {
+            const aircraft = document.createElement("div");
+            aircraft.className = "runway-aircraft";
+            const aircraftId = document.createElement("strong");
+            aircraftId.textContent = runway.aircraft_id;
+            const phase = document.createElement("span");
+            phase.textContent = assignmentLabel(runway);
+            aircraft.append(aircraftId, phase);
+            node.append(aircraft);
+          }
         } else {
-          node.textContent = `RWY ${runway.runway_id}`;
-          node.title = `Runway ${runway.runway_id}: ${runway.status}`;
+          const id = document.createElement("span");
+          id.textContent = runwayLabel(runway);
+          const aircraft = document.createElement("span");
+          aircraft.className = `map-aircraft${runway.aircraft_id ? "" : " empty"}`;
+          aircraft.textContent = runway.aircraft_id || "No aircraft";
+          node.append(id, aircraft);
         }
+        node.title = `${runwayLabel(runway)}: ${runway.status}${runway.aircraft_id ? ` · ${runway.aircraft_id} · ${assignmentLabel(runway)}` : ""}`;
+        node.setAttribute("aria-label", node.title);
         return node;
       }
 
       function renderAirport(airport) {
-        document.getElementById("airport-name").textContent = `Airport ${airport.airport_id}`;
-        document.getElementById("airport-id").textContent = airport.airport_id;
-        document.getElementById("airport-perimeter").textContent = airport.perimeter.toLocaleString();
-        document.getElementById("airport-coordinates").textContent = `Lat ${airport.latitude.toFixed(4)} · Lon ${airport.longitude.toFixed(4)}`;
+        // The airport ID stays visible as the map label (REQ-OPS-001).
+        document.getElementById("map-label").textContent = `${airport.airport_id} / Airport`;
+        // Tower gives no unit for the perimeter, so the number is shown as is.
+        document.getElementById("airport-perimeter").textContent = `${airport.perimeter.toLocaleString()} · demo units`;
+        document.getElementById("airport-coordinates").textContent = formatCoordinates(airport.latitude, airport.longitude);
         document.getElementById("airport-runway-count").textContent = airport.number_of_runways;
-        const timestamp = airport.runways[0]?.timestamp;
+        // Tower stores these record times in a shared format without timezone information.
+        const timestamp = airport.runways.flatMap(runway => [runway.timestamp, runway.assigned_at]).filter(Boolean).sort().at(-1);
+        const available = airport.runways.filter(runway => runway.status === "Available").length;
+        const aircraft = airport.runways.filter(runway => runway.aircraft_id).length;
+        document.getElementById("runway-summary").textContent = `${available} available / ${airport.runways.length - available} not available · ${aircraft} aircraft`;
         document.getElementById("airport-updated").textContent = timestamp || "—";
-        document.getElementById("airport-updated").dateTime = timestamp ? `${timestamp}Z` : "";
+        if (timestamp) document.getElementById("airport-updated").dateTime = timestamp;
+        else document.getElementById("airport-updated").removeAttribute("datetime");
+        const source = airport.assignment_source === "runway_assignments" ? "Tower assignments" : "Tower runways · assignment phase unavailable";
+        const observed = airport.observed_at ? ` · read at ${new Date(airport.observed_at).toLocaleTimeString()}` : "";
+        document.getElementById("airport-source").textContent = `${source}${observed}`;
 
         mapRunways.replaceChildren(...airport.runways.map(runway => createRunway(runway)));
         runwayList.replaceChildren(...airport.runways.map(runway => createRunway(runway, true)));
         document.getElementById("airport-error").hidden = true;
+        document.querySelector(".content-grid").classList.remove("stale-data");
       }
 
       function renderMessages(messages) {
@@ -322,9 +421,12 @@
       }
 
       async function refreshDashboard() {
+        if (refreshing) return;
+        refreshing = true;
+        try {
         const [airportResult, messagesResult] = await Promise.allSettled([
           getJson("/api/airport"),
-          getJson("/messages?recipient=command"),
+          getJson("/api/command-messages"),
         ]);
 
         const airportReady = airportResult.status === "fulfilled";
@@ -334,15 +436,22 @@
         const airportError = document.getElementById("airport-error");
         if (airportReady) {
           renderAirport(airportResult.value);
+          lastAirportSnapshot = airportResult.value;
         } else {
-          document.getElementById("airport-name").textContent = "Airport state unavailable";
-          for (const id of ["airport-id", "airport-perimeter", "airport-coordinates", "airport-runway-count", "airport-updated"]) {
-            document.getElementById(id).textContent = "—";
+          if (!lastAirportSnapshot) {
+            document.getElementById("map-label").textContent = "Airport";
+            for (const id of ["airport-perimeter", "airport-coordinates", "airport-runway-count", "airport-updated", "runway-summary"]) {
+              document.getElementById(id).textContent = "—";
+            }
+            document.getElementById("airport-updated").removeAttribute("datetime");
+            mapRunways.replaceChildren();
+            runwayList.replaceChildren();
           }
-          document.getElementById("airport-updated").removeAttribute("datetime");
-          mapRunways.replaceChildren();
-          runwayList.replaceChildren();
-          airportError.textContent = "Airport details could not be loaded. Retry when the data source is available.";
+          document.querySelector(".content-grid").classList.add("stale-data");
+          document.getElementById("airport-source").textContent = lastAirportSnapshot ? "Tower unavailable · last received data" : "Tower data unavailable";
+          airportError.textContent = lastAirportSnapshot
+            ? "Tower data could not be refreshed. The aircraft and runways shown are from the last successful read and may have changed."
+            : "Tower airport data is not available yet. Start Tower with the shared airport database; Command will retry automatically.";
           airportError.hidden = false;
         }
 
@@ -353,6 +462,9 @@
         } else {
           messageError.textContent = "Tower messaging is unavailable. The rest of the dashboard remains visible.";
           messageError.hidden = false;
+        }
+        } finally {
+          refreshing = false;
         }
       }
 
