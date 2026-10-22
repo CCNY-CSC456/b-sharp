@@ -121,7 +121,7 @@
         background-size: 26px 26px;
       }
 
-      .airport-inset { position: absolute; width: 48%; height: 48%; left: 26%; top: 26%; border: 2px solid var(--muted); border-radius: 4px; background: var(--field); }
+      .airport-inset { position: absolute; z-index: 6; width: 48%; height: 48%; left: 26%; top: 26%; border: 2px solid var(--muted); border-radius: 4px; background: var(--field); }
       .airport-map.runway-focus .airport-inset { width: 86%; height: 86%; left: 7%; top: 7%; }
       .airport-map.runway-focus .aircraft-layer, .airport-map.runway-focus .map-compass, .airport-map.runway-focus .map-scale { display: none; }
 
@@ -142,7 +142,9 @@
       .map-controls select:focus-visible, .flight-marker:focus-visible, .aircraft-record:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
       .map-compass { position: absolute; top: 10px; right: 12px; color: var(--muted); font-size: 11px; text-align: center; }
       .map-scale { position: absolute; bottom: 8px; left: 10px; color: var(--muted); font-size: 10px; }
-      .aircraft-layer { position: absolute; inset: 24px; pointer-events: none; }
+      .aircraft-layer { position: absolute; z-index: 3; inset: 16px; pointer-events: none; }
+      .position-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+      .position-lines line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
       .flight-marker { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; color: var(--accent); background: var(--field); cursor: pointer; pointer-events: auto; z-index: 3; }
       .flight-marker.arrival, .legend-arrival { color: var(--arrival); }
       .flight-marker.departure, .legend-departure { color: var(--departure); }
@@ -154,6 +156,13 @@
       .flight-marker.edge-left .flight-label { left: -10px; transform: none; }
       .flight-marker.edge-right .flight-label { left: auto; right: -10px; transform: none; }
       .flight-marker.edge-bottom .flight-label { top: auto; bottom: 29px; }
+      .flight-marker.airport-offset { display: flex; gap: 4px; width: max-content; max-width: 100%; height: auto; min-height: 32px; padding: 3px; border: 1px solid var(--line-strong); border-radius: 5px; }
+      .flight-marker.airport-offset svg { flex: 0 0 22px; }
+      .flight-marker.airport-offset .flight-label { position: static; width: 130px; padding: 0; border: 0; transform: none; }
+      .flight-marker.airport-offset .flight-label strong, .flight-marker.airport-offset .flight-label small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .airport-aircraft-dock { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+      .airport-aircraft-dock:empty { display: none; }
+      .airport-aircraft-dock .flight-marker { position: static; transform: none; pointer-events: auto; }
       .map-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin: 10px 0; font-size: 11px; color: var(--muted); }
       .aircraft-summary { margin: 12px 0 8px; color: var(--text-soft); font-size: 12px; line-height: 1.5; }
       .aircraft-list { display: grid; gap: 6px; max-height: 250px; overflow-y: auto; padding: 3px; margin: 0; list-style: none; }
@@ -267,7 +276,6 @@
           </div>
           <div class="map-controls">
             <label>View <select id="map-view"><option value="aircraft">Aircraft + airport</option><option value="runways">Runway detail</option></select></label>
-            <label>Map width <select id="map-range"><option value="4">4 km</option><option value="10" selected>10 km</option><option value="20">20 km</option><option value="50">50 km</option><option value="100">100 km</option></select></label>
           </div>
           <figure style="margin:0">
             <div class="airport-map" role="group" aria-label="North-up recorded aircraft positions around a centered airport runway schematic">
@@ -279,8 +287,10 @@
               <span id="map-scale" class="map-scale">10 km across · north up</span>
               <div id="aircraft-layer" class="aircraft-layer"></div>
             </div>
-            <figcaption>Aircraft use recorded coordinates. Centered airport / runways are schematic, not to scale. Select an aircraft for its full record below.</figcaption>
+            <figcaption>10 km coordinate span · north up. Airport / runways are schematic, not to scale. Aircraft beside the airport use offset labels and connector lines to keep runways clear; exact coordinates are listed below.</figcaption>
           </figure>
+          <p id="airport-aircraft-note" class="source-note" hidden>Airport area · additional aircraft labels shown here to keep the runways clear.</p>
+          <div id="airport-aircraft-dock" class="airport-aircraft-dock" role="group" aria-label="Additional aircraft near the airport; labels moved here to keep runways clear"></div>
           <div class="map-legend"><span class="legend-arrival">✈ Landing</span><span class="legend-departure">✈ Departing</span><span>✈ Parked / other</span></div>
           <p id="aircraft-summary" class="aircraft-summary" role="status">Waiting for Radar positions</p>
           <ul id="aircraft-list" class="aircraft-list" aria-label="Recorded aircraft details"></ul>
@@ -457,6 +467,85 @@
         return Number.isFinite(aircraft.altitude) ? `${aircraft.altitude.toLocaleString()} ft` : "Altitude unavailable";
       }
 
+      function rectanglesOverlap(a, b, gap = 0) {
+        return a.left < b.right + gap && a.right > b.left - gap && a.top < b.bottom + gap && a.bottom > b.top - gap;
+      }
+
+      function markerBounds(marker) {
+        const icon = marker.getBoundingClientRect();
+        const label = marker.querySelector(".flight-label").getBoundingClientRect();
+        return { left: Math.min(icon.left, label.left), right: Math.max(icon.right, label.right),
+          top: Math.min(icon.top, label.top), bottom: Math.max(icon.bottom, label.bottom) };
+      }
+
+      function keepRunwaysClear() {
+        const layer = document.getElementById("aircraft-layer");
+        const dock = document.getElementById("airport-aircraft-dock");
+        const dockNote = document.getElementById("airport-aircraft-note");
+        dockNote.hidden = true;
+        // Return docked callouts before remeasuring after a resize or view change.
+        layer.append(...dock.children);
+        layer.querySelector(".position-lines")?.remove();
+        if (document.querySelector(".airport-map").classList.contains("runway-focus")) {
+          dock.replaceChildren();
+          return;
+        }
+        const frame = layer.getBoundingClientRect();
+        const airport = document.querySelector(".airport-inset").getBoundingClientRect();
+        const markers = [...layer.querySelectorAll(".flight-marker")];
+        const occupied = [];
+        const offsets = [];
+        for (const marker of markers) {
+          marker.classList.remove("airport-offset");
+          marker.removeAttribute("aria-description");
+          marker.style.left = `${marker.dataset.x}%`;
+          marker.style.top = `${marker.dataset.y}%`;
+          const bounds = markerBounds(marker);
+          if (rectanglesOverlap(bounds, airport, 8)) offsets.push(marker);
+          else occupied.push(bounds);
+        }
+
+        const lines = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        lines.classList.add("position-lines");
+        lines.setAttribute("aria-hidden", "true");
+        layer.prepend(lines);
+        for (const marker of offsets) {
+          marker.classList.add("airport-offset");
+          const size = marker.getBoundingClientRect();
+          const originalX = Number(marker.dataset.x) / 100 * frame.width;
+          const originalY = Number(marker.dataset.y) / 100 * frame.height;
+          const margin = 4;
+          const minX = size.width / 2 + margin;
+          const maxX = frame.width - size.width / 2 - margin;
+          const clampX = value => Math.max(minX, Math.min(maxX, value));
+          const candidates = [];
+          for (const y of [size.height / 2 + margin, frame.height - size.height / 2 - margin]) {
+            for (const x of [clampX(originalX), minX, maxX, frame.width / 2]) candidates.push({ x, y });
+          }
+          candidates.sort((a, b) => Math.hypot(a.x - originalX, a.y - originalY) - Math.hypot(b.x - originalX, b.y - originalY));
+          let placed = false;
+          for (const point of candidates) {
+            marker.style.left = `${point.x}px`;
+            marker.style.top = `${point.y}px`;
+            const bounds = markerBounds(marker);
+            if (bounds.left < frame.left || bounds.right > frame.right || bounds.top < frame.top || bounds.bottom > frame.bottom
+                || rectanglesOverlap(bounds, airport, 8) || occupied.some(other => rectanglesOverlap(bounds, other, 4))) continue;
+            occupied.push(bounds);
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", originalX);
+            line.setAttribute("y1", originalY);
+            line.setAttribute("x2", point.x);
+            line.setAttribute("y2", point.y);
+            lines.append(line);
+            placed = true;
+            break;
+          }
+          if (!placed) dock.append(marker);
+          marker.setAttribute("aria-description", "Marker offset to keep the runway drawing clear. Exact latitude and longitude are shown in the aircraft record.");
+        }
+        dockNote.hidden = !dock.children.length;
+      }
+
       function selectAircraft(aircraftId) {
         selectedAircraft = aircraftId;
         renderAircraft();
@@ -474,12 +563,13 @@
         const layer = document.getElementById("aircraft-layer");
         const list = document.getElementById("aircraft-list");
         layer.replaceChildren();
+        document.getElementById("airport-aircraft-dock").replaceChildren();
         list.replaceChildren();
         if (!lastAircraftSnapshot) return;
 
         const airport = lastAirportSnapshot;
         const canPlot = airport && Number.isFinite(airport.latitude) && Number.isFinite(airport.longitude);
-        const halfWidth = Number(document.getElementById("map-range").value) * 1000 / 2;
+        const halfWidth = 5000; // Fixed 10 km coordinate span.
         const aircraft = lastAircraftSnapshot.aircraft;
         if (!aircraft.some(plane => plane.aircraft_id === selectedAircraft)) selectedAircraft = null;
         const groups = new Map();
@@ -523,6 +613,8 @@
           marker.className = `flight-marker${plane.status === "Landing" ? " arrival" : plane.status === "Departing" ? " departure" : ""}`;
           marker.style.left = `${position.x}%`;
           marker.style.top = `${position.y}%`;
+          marker.dataset.x = position.x;
+          marker.dataset.y = position.y;
           if (position.x < 25) marker.classList.add("edge-left");
           if (position.x > 75) marker.classList.add("edge-right");
           if (position.y > 65) marker.classList.add("edge-bottom");
@@ -551,6 +643,7 @@
           marker.append(svg, label);
           layer.append(marker);
         }
+        keepRunwaysClear();
 
         const snapshot = lastAircraftSnapshot;
         const notes = [`${aircraft.length} recorded aircraft`, canPlot ? `${aircraft.length - outside} in range / ${outside} outside` : "Waiting for airport center"];
@@ -560,7 +653,7 @@
         document.getElementById("aircraft-summary").textContent = notes.join(" · ");
         const restoreFocus = focusedRecord
           ? [...list.querySelectorAll("button")].find(node => node.dataset.aircraftId === focusedRecord)
-          : [...layer.querySelectorAll("button")].find(node => node.dataset.position === focusedPosition);
+          : [...document.querySelectorAll(".flight-marker")].find(node => node.dataset.position === focusedPosition);
         if (restoreFocus) restoreFocus.focus({ preventScroll: true });
         if (!aircraft.length) {
           const empty = document.createElement("li");
@@ -573,12 +666,10 @@
       function updateMapView() {
         const focused = document.getElementById("map-view").value === "runways";
         document.querySelector(".airport-map").classList.toggle("runway-focus", focused);
-        document.getElementById("map-range").disabled = focused;
-        document.getElementById("map-scale").textContent = `${document.getElementById("map-range").value} km across · north up`;
         renderAircraft();
       }
       document.getElementById("map-view").addEventListener("change", updateMapView);
-      document.getElementById("map-range").addEventListener("change", updateMapView);
+      new ResizeObserver(keepRunwaysClear).observe(document.querySelector(".airport-map"));
 
       function renderMessages(messages) {
         if (!messages.length) {

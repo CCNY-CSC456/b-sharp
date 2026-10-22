@@ -11,8 +11,9 @@ Command shall display aircraft at their recorded geographic coordinates around a
 
 - `GET /api/aircraft` reads aircraft ID, latitude, longitude, altitude in feet, Radar status, and position timestamp from the local `radar.db` aircraft table. `COMMAND_RADAR_DB` overrides its checkout-root default path.
 - Command opens Radar's database read-only. Missing or incomplete data returns HTTP 503 without creating or migrating the database. No Tower or Radar source is changed.
-- Valid latitude / longitude values position aircraft on a north-up local coordinate plot centered on Tower's airport coordinates. Map width is selectable from 4 to 100 km. Aircraft outside that extent remain in the detail list and are counted; their markers are not clamped to false positions.
+- Valid latitude / longitude values position aircraft on a north-up local coordinate plot centered on Tower's airport coordinates with a fixed 10 km span. There is no map-width selector. Aircraft outside that extent remain in the detail list and are counted; their markers are not clamped to false positions.
 - The central airport and runways remain schematic, explicitly labeled as not to scale. Availability colors and assigned aircraft continue to come from Tower. A runway detail view expands the existing schematic.
+- Aircraft icons and labels must not cover the airport runway drawing, including aircraft at the airport's exact coordinates. Such markers use offset callouts and connector lines around the drawing. If there is no clear space, additional callouts appear immediately below the map. Coordinates remain unchanged in every label and record. Resizing the page recalculates callout placement.
 - Markers show ID, altitude, and coordinates. The selectable detail list also shows full coordinates, recorded time, Radar status, and any matching Tower runway assignment.
 - Aircraft at identical coordinates share a marker; selecting it cycles their labels. Every aircraft remains individually selectable in the list. Marker controls are keyboard accessible.
 - Missing or invalid coordinates are omitted and counted. An unknown altitude is labeled unavailable, never converted to zero.
