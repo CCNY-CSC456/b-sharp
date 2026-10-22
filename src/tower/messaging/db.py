@@ -14,7 +14,7 @@ def init_db():
     """Create the messages table if it doesn't exist yet. Runs once when the server starts."""
     conn = sqlite3.connect(DB)  # open (or create) the database file
     # "IF NOT EXISTS" means restarting the server won't wipe or duplicate the table.
-    conn.execute("CREATE TABLE IF NOT EXISTS messages (sender TEXT, recipient TEXT, content TEXT)")
+    conn.execute("CREATE TABLE IF NOT EXISTS messages (sender TEXT, recipient TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
     conn.commit()  # save the change to disk
     conn.close()   # close the connection when done
 
