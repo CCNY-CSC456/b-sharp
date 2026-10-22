@@ -1,6 +1,7 @@
 # REQ-RAD-012
 # aircraft_repo.py — the ONLY radar file that talks to the database.
-# It can save a new airplane, look one up, and set its runway (REQ-RAD-013).
+# It can save a new airplane, look one up, set its runway (REQ-RAD-013),
+# and delete it once it has departed (REQ-RAD-014).
 #
 # How to use it:
 #   conn = init_db("radar.db")     # open the database once
@@ -90,5 +91,14 @@ def update_runway(conn, aircraft_id, runway_id):
         (runway_id, now().strftime(TIME_FORMAT), aircraft_id),
     )
     if cursor.rowcount == 0:  # rowcount = how many rows were changed
+        raise ValueError(f"aircraft {aircraft_id} does not exist")
+    conn.commit()
+
+
+# REQ-RAD-014
+def delete_aircraft(conn, aircraft_id):
+    """Remove the plane with this ID. Raises ValueError if there is no plane with this ID."""
+    cursor = conn.execute("DELETE FROM aircraft WHERE aircraft_id = ?", (aircraft_id,))
+    if cursor.rowcount == 0:  # rowcount = how many rows were deleted
         raise ValueError(f"aircraft {aircraft_id} does not exist")
     conn.commit()

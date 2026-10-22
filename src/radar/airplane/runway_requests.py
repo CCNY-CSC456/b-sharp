@@ -12,13 +12,15 @@ import json
 # Tower's messaging functions, used exactly as tower wrote them.
 from src.tower.messaging.db import init_db as init_messages_db, save_message, get_messages
 
-from src.radar.airplane.aircraft_repo import TIME_FORMAT, get_aircraft, now, update_runway
+from src.radar.airplane.aircraft_repo import TIME_FORMAT, delete_aircraft, get_aircraft, now, update_runway
 
 # The message types, all in one place. If tower wants different names, change them here.
 REQUEST_LANDING = "REQUEST_LANDING"    # radar -> tower
 REQUEST_TAKEOFF = "REQUEST_TAKEOFF"    # radar -> tower
 RUNWAY_ASSIGNED = "RUNWAY_ASSIGNED"    # tower -> radar, includes "runway_id"
 NO_RUNWAY = "NO_RUNWAY"                # tower -> radar
+LANDED = "LANDED"                      # radar -> tower, plane is off the runway (REQ-RAD-014)
+DEPARTED = "DEPARTED"                  # radar -> tower, plane has left (REQ-RAD-014)
 
 
 def send_to_tower(content):
@@ -59,6 +61,25 @@ def request_landing(conn, aircraft_id, send=send_to_tower):
 def request_takeoff(conn, aircraft_id, send=send_to_tower):
     return request_runway(conn, aircraft_id, REQUEST_TAKEOFF, send)
 
+
+
+# --- radar -> tower: done with the runway (REQ-RAD-014) ---
+
+def report_landed(conn, aircraft_id, send=send_to_tower):
+    """Tell tower the plane has landed, so tower can free its runway. The plane is not changed."""
+    return request_runway(conn, aircraft_id, LANDED, send)
+
+
+def report_departed(conn, aircraft_id, send=send_to_tower):
+    """Tell tower the plane has departed, then remove it from radar.
+
+    The message is sent FIRST: if sending fails, the plane is kept so this can be retried.
+    """
+    message = request_runway(conn, aircraft_id, DEPARTED, send)
+    # Delete the plane, because check_tower_replies re-reads old replies every time and
+    # would put the runway back on a plane that still exists.
+    delete_aircraft(conn, aircraft_id)
+    return message
 
 # --- tower -> radar ---
 
