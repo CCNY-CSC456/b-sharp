@@ -136,7 +136,7 @@ def test_header_row_shows_the_four_details_next_to_the_heading():
     root = page()
     heading = first(root, cls="heading")
     labels = [node.all_text() for node in heading.walk() if "metric-label" in node.classes]
-    assert labels == ["Coordinates", "Perimeter", "Runways", "Latest update · UTC"]
+    assert labels == ["Coordinates", "Perimeter", "Runways", "Latest record time"]
     for element_id in ["airport-coordinates", "airport-perimeter", "airport-runway-count", "airport-updated"]:
         assert heading in by_id(root, element_id).ancestors(), element_id
 

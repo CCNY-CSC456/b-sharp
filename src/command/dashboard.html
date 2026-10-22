@@ -127,6 +127,11 @@
 
       .map-runway { display: grid; place-items: center; min-width: 0; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--text); background: var(--panel-raised); box-shadow: 0 7px 18px rgba(0, 0, 0, .22); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
       .map-runway.unavailable { border-color: var(--not-available-line); color: var(--not-available); background: var(--not-available-bg); }
+      .map-runway { align-content: center; gap: 2px; padding: 3px; }
+      .map-aircraft { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+      .map-aircraft.empty { color: var(--muted); font-size: 9px; font-weight: 500; }
+      .source-note { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+      .stale-data .airport-map, .stale-data .runway-list { opacity: .6; }
 
       figcaption { margin-top: 12px; color: var(--muted); font-size: 11px; text-align: center; }
 
@@ -136,7 +141,9 @@
 
       .runway-id { grid-column: 1; grid-row: 1; color: var(--text); font-size: 12px; font-weight: 650; white-space: nowrap; }
 
-      .runway-updated { grid-column: 1 / -1; grid-row: 2; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+      .runway-updated { grid-column: 1 / -1; grid-row: 3; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+      .runway-aircraft { grid-column: 1 / -1; grid-row: 2; display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; color: var(--text-soft); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+      .runway-aircraft strong { color: var(--text); }
 
       .runway-status { grid-column: 2; grid-row: 1; color: var(--available); font-size: 10px; font-weight: 750; text-align: right; text-transform: uppercase; letter-spacing: .06em; }
 
@@ -215,7 +222,7 @@
           <div class="metric"><dt class="metric-label">Coordinates</dt><dd id="airport-coordinates" class="metric-value">—</dd></div>
           <div class="metric"><dt class="metric-label">Perimeter</dt><dd id="airport-perimeter" class="metric-value">—</dd></div>
           <div class="metric"><dt class="metric-label">Runways</dt><dd id="airport-runway-count" class="metric-value">—</dd></div>
-          <div class="metric"><dt class="metric-label">Latest update · UTC</dt><dd class="metric-value"><time id="airport-updated">—</time></dd></div>
+          <div class="metric"><dt class="metric-label">Latest record time</dt><dd class="metric-value"><time id="airport-updated">—</time></dd></div>
         </dl>
       </section>
 
@@ -223,21 +230,23 @@
         <section id="map-panel" class="panel map-panel" aria-labelledby="map-title">
           <div class="section-heading">
             <h2 id="map-title">Airport perimeter</h2>
+            <span id="airport-source" class="section-note" role="status">Waiting for Tower data</span>
           </div>
           <figure style="margin:0">
             <div class="airport-map" role="img" aria-label="Schematic airport perimeter with runway positions">
               <span id="map-label" class="map-label">Airport</span>
               <div id="map-runways"></div>
             </div>
-            <figcaption>Schematic view · runway placement is not to scale</figcaption>
+            <figcaption>Schematic view · aircraft shown at their assigned runways, not geographic positions</figcaption>
           </figure>
-          <p id="airport-error" class="degraded-message" hidden></p>
+          <p id="airport-error" class="degraded-message" role="alert" hidden></p>
         </section>
 
         <section id="runway-panel" class="panel runway-panel" aria-labelledby="runways-title">
           <div class="section-heading">
             <h2 id="runways-title">Runway availability</h2>
             <span id="runway-summary" class="section-note">—</span>
+            <p class="source-note">Assigned aircraft only · record times are shown as supplied by Tower.</p>
           </div>
           <ul id="runway-list" class="runway-list" aria-label="Runway statuses">
             <li class="runway-card"><span class="runway-id">Waiting for airport data</span></li>
@@ -274,11 +283,19 @@
       const messageList = document.getElementById("message-list");
       const messageFeedback = document.getElementById("message-feedback");
       const sendButton = document.getElementById("send-button");
+      let lastAirportSnapshot = null;
+      let refreshing = false;
 
       async function getJson(url) {
-        const response = await fetch(url, { headers: { Accept: "application/json" } });
-        if (!response.ok) throw new Error(`Request failed (${response.status})`);
-        return response.json();
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 5000);
+        try {
+          const response = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal, cache: "no-store" });
+          if (!response.ok) throw new Error(`Request failed (${response.status})`);
+          return await response.json();
+        } finally {
+          window.clearTimeout(timeout);
+        }
       }
 
       function setStatus(degraded) {
@@ -298,6 +315,21 @@
         return `${lat} / ${lon}`;
       }
 
+      function assignmentLabel(runway) {
+        const labels = {
+          LANDING_ASSIGNED: "Landing assigned",
+          LANDED: "Landed",
+          TAKEOFF_ASSIGNED: "Takeoff assigned",
+        };
+        return labels[runway.assignment_status] || "Assigned · phase unavailable";
+      }
+
+      function setRecordTime(node, timestamp, prefix = "") {
+        node.textContent = timestamp ? `${prefix}${timestamp}` : "Timestamp unavailable";
+        if (timestamp) node.dateTime = timestamp;
+        else node.removeAttribute("datetime");
+      }
+
       function createRunway(runway, compact = false) {
         const node = document.createElement(compact ? "li" : "span");
         const unavailable = runway.status !== "Available";
@@ -313,14 +345,28 @@
           status.textContent = runway.status;
           const updated = document.createElement("time");
           updated.className = "runway-updated";
-          updated.textContent = `Updated ${runway.timestamp} UTC`;
-          updated.dateTime = `${runway.timestamp}Z`;
+          setRecordTime(updated, runway.assigned_at || runway.timestamp, runway.assigned_at ? "Assigned " : "Recorded ");
           node.append(id, updated, status);
-          node.title = `Updated ${runway.timestamp} UTC`;
+          if (runway.aircraft_id) {
+            const aircraft = document.createElement("div");
+            aircraft.className = "runway-aircraft";
+            const aircraftId = document.createElement("strong");
+            aircraftId.textContent = runway.aircraft_id;
+            const phase = document.createElement("span");
+            phase.textContent = assignmentLabel(runway);
+            aircraft.append(aircraftId, phase);
+            node.append(aircraft);
+          }
         } else {
-          node.textContent = runwayLabel(runway);
-          node.title = `Runway ${runway.runway_id}: ${runway.status}`;
+          const id = document.createElement("span");
+          id.textContent = runwayLabel(runway);
+          const aircraft = document.createElement("span");
+          aircraft.className = `map-aircraft${runway.aircraft_id ? "" : " empty"}`;
+          aircraft.textContent = runway.aircraft_id || "No aircraft";
+          node.append(id, aircraft);
         }
+        node.title = `${runwayLabel(runway)}: ${runway.status}${runway.aircraft_id ? ` · ${runway.aircraft_id} · ${assignmentLabel(runway)}` : ""}`;
+        node.setAttribute("aria-label", node.title);
         return node;
       }
 
@@ -331,16 +377,22 @@
         document.getElementById("airport-perimeter").textContent = `${airport.perimeter.toLocaleString()} · demo units`;
         document.getElementById("airport-coordinates").textContent = formatCoordinates(airport.latitude, airport.longitude);
         document.getElementById("airport-runway-count").textContent = airport.number_of_runways;
-        // Latest update = the newest runway timestamp. They share one format, so text order is time order.
-        const timestamp = airport.runways.map(runway => runway.timestamp).sort().at(-1);
+        // Tower stores these record times in a shared format without timezone information.
+        const timestamp = airport.runways.flatMap(runway => [runway.timestamp, runway.assigned_at]).filter(Boolean).sort().at(-1);
         const available = airport.runways.filter(runway => runway.status === "Available").length;
-        document.getElementById("runway-summary").textContent = `${available} available / ${airport.runways.length - available} not available`;
+        const aircraft = airport.runways.filter(runway => runway.aircraft_id).length;
+        document.getElementById("runway-summary").textContent = `${available} available / ${airport.runways.length - available} not available · ${aircraft} aircraft`;
         document.getElementById("airport-updated").textContent = timestamp || "—";
-        document.getElementById("airport-updated").dateTime = timestamp ? `${timestamp}Z` : "";
+        if (timestamp) document.getElementById("airport-updated").dateTime = timestamp;
+        else document.getElementById("airport-updated").removeAttribute("datetime");
+        const source = airport.assignment_source === "runway_assignments" ? "Tower assignments" : "Tower runways · assignment phase unavailable";
+        const observed = airport.observed_at ? ` · read at ${new Date(airport.observed_at).toLocaleTimeString()}` : "";
+        document.getElementById("airport-source").textContent = `${source}${observed}`;
 
         mapRunways.replaceChildren(...airport.runways.map(runway => createRunway(runway)));
         runwayList.replaceChildren(...airport.runways.map(runway => createRunway(runway, true)));
         document.getElementById("airport-error").hidden = true;
+        document.querySelector(".content-grid").classList.remove("stale-data");
       }
 
       function renderMessages(messages) {
@@ -369,9 +421,12 @@
       }
 
       async function refreshDashboard() {
+        if (refreshing) return;
+        refreshing = true;
+        try {
         const [airportResult, messagesResult] = await Promise.allSettled([
           getJson("/api/airport"),
-          getJson("/messages?recipient=command"),
+          getJson("/api/command-messages"),
         ]);
 
         const airportReady = airportResult.status === "fulfilled";
@@ -381,15 +436,22 @@
         const airportError = document.getElementById("airport-error");
         if (airportReady) {
           renderAirport(airportResult.value);
+          lastAirportSnapshot = airportResult.value;
         } else {
-          document.getElementById("map-label").textContent = "Airport";
-          for (const id of ["airport-perimeter", "airport-coordinates", "airport-runway-count", "airport-updated", "runway-summary"]) {
-            document.getElementById(id).textContent = "—";
+          if (!lastAirportSnapshot) {
+            document.getElementById("map-label").textContent = "Airport";
+            for (const id of ["airport-perimeter", "airport-coordinates", "airport-runway-count", "airport-updated", "runway-summary"]) {
+              document.getElementById(id).textContent = "—";
+            }
+            document.getElementById("airport-updated").removeAttribute("datetime");
+            mapRunways.replaceChildren();
+            runwayList.replaceChildren();
           }
-          document.getElementById("airport-updated").removeAttribute("datetime");
-          mapRunways.replaceChildren();
-          runwayList.replaceChildren();
-          airportError.textContent = "Airport details could not be loaded. Retry when the data source is available.";
+          document.querySelector(".content-grid").classList.add("stale-data");
+          document.getElementById("airport-source").textContent = lastAirportSnapshot ? "Tower unavailable · last received data" : "Tower data unavailable";
+          airportError.textContent = lastAirportSnapshot
+            ? "Tower data could not be refreshed. The aircraft and runways shown are from the last successful read and may have changed."
+            : "Tower airport data is not available yet. Start Tower with the shared airport database; Command will retry automatically.";
           airportError.hidden = false;
         }
 
@@ -400,6 +462,9 @@
         } else {
           messageError.textContent = "Tower messaging is unavailable. The rest of the dashboard remains visible.";
           messageError.hidden = false;
+        }
+        } finally {
+          refreshing = false;
         }
       }
 
