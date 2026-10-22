@@ -140,65 +140,6 @@ def create_airport(conn, airport_id, perimeter, latitude, longitude):
         return False
     return True
 
-### ORD
-# def assign_runway(conn, airport_id, aircraft_id):
-#     """Give an airplane a runway at this airport. Returns the runway_id, or None if none is free.
-#
-#     The lowest-numbered "Available" runway is used. It becomes "Not Available" and remembers the airplane.
-#     If the airplane already has a runway, that same runway is returned and nothing changes.
-#     That matters because tower's inbox keeps every message, so the same request can be read twice.
-#     """
-#     with conn:
-#
-#         row = conn.execute( HQC[5],(airport_id, aircraft_id), ).fetchone()
-#         if row is not None:
-#             return row[0]
-#
-#         row = conn.execute( HQC[6], (airport_id,), ).fetchone()
-#         if row is None:  # every runway is taken, or there's no such airport
-#             return None
-#         runway_id = row[0]
-#
-#         conn.execute( HQC[7], (aircraft_id, now(), airport_id, runway_id), )
-#     return runway_id
-#
-#
-# def free_runway(conn, airport_id, aircraft_id):
-#     """Free the runway an airplane holds at this airport. Returns that runway_id, or None.
-#
-#     The runway goes back to "Available" with no airplane, so assign_runway() can give it out again.
-#     None means the airplane had no runway here, so nothing changed. Freeing twice is harmless,
-#     which matters because tower's inbox keeps every message, so the same "landed" can be read twice.
-#     """
-#     with conn:
-#         row = conn.execute( HQC[8], (airport_id, aircraft_id), ).fetchone()
-#
-#         if row is None:  # this airplane has no runway here
-#             return None
-#         runway_id = row[0]
-#
-#         conn.execute( HQC[9], (now(), airport_id, runway_id), )
-#     return runway_id
-### END
-
-### NOTE: these fixed the command test that was failing?
-# ORD
-# def is_processed(conn, message_id):
-#     """Check if a message key has already been handled."""
-#     row = conn.execute(
-#         "SELECT 1 FROM processed_messages WHERE message_id = ?", (message_id,)
-#     ).fetchone()
-#     return row is not None
-#
-#
-# def mark_processed(conn, message_id):
-#     """Record a message key to guarantee idempotency across executions."""
-#     with conn:
-#         conn.execute(
-#             "INSERT OR IGNORE INTO processed_messages (message_id) VALUES (?)",
-#             (message_id,),
-#         )
-# END
 
 # check if a message key has already been handled
 def is_processed(conn, msg_key):
