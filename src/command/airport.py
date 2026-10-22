@@ -51,11 +51,11 @@ def get_airport_state():
             runway = dict(row)
             if has_assignments:
                 assignment = assignments.get(runway["runway_id"])
-                # The new table owns occupancy; old runways columns may be stale.
+                # Assignments own aircraft occupancy; runways still own base availability.
                 aircraft_id = assignment["aircraft_id"] if assignment else None
                 assignment_status = assignment["status"] if assignment else None
                 assigned_at = assignment["assigned_at"] if assignment else None
-                status = "Not Available" if assignment else "Available"
+                status = "Not Available" if assignment else runway["status"]
             else:
                 aircraft_id = runway.get("aircraft_id")
                 assignment_status = None  # Legacy data cannot tell assigned from landed.

@@ -24,7 +24,7 @@ def test_reads_legacy_tower_data_without_inventing_an_aircraft_phase(tower_datab
     assert datetime.fromisoformat(state["observed_at"]).tzinfo == timezone.utc
 
 
-def test_new_assignments_override_stale_legacy_occupancy(assignments_database):
+def test_assignments_override_legacy_aircraft_but_preserve_base_availability(assignments_database):
     with sqlite3.connect(assignments_database) as conn:
         conn.execute("UPDATE runways SET status='Not Available', aircraft_id='OLD' WHERE runway_id=1")
     before = assignments_database.read_bytes()
@@ -32,13 +32,23 @@ def test_new_assignments_override_stale_legacy_occupancy(assignments_database):
     assert assignments_database.read_bytes() == before
     assert state["assignment_source"] == "runway_assignments"
     assert state["runways"][0]["aircraft_id"] is None
-    assert state["runways"][0]["status"] == "Available"
+    assert state["runways"][0]["status"] == "Not Available"
     assigned = state["runways"][1]
     assert assigned["status"] == "Not Available"
     assert assigned["aircraft_id"] == "AA123"
     assert assigned["assignment_status"] == "LANDING_ASSIGNED"
     assert assigned["assigned_at"] == "2026-10-22T15:00:00"
     assert assigned["timestamp"] == "2026-10-22T14:00:00"
+
+
+def test_unavailable_runway_stays_unavailable_with_an_empty_assignments_table(assignments_database):
+    with sqlite3.connect(assignments_database) as conn:
+        conn.execute("DELETE FROM runway_assignments")
+        conn.execute("UPDATE runways SET status='Not Available' WHERE runway_id=1")
+    state = airport.get_airport_state()
+    assert state["runways"][0]["status"] == "Not Available"
+    assert state["runways"][0]["aircraft_id"] is None
+    assert sum(r["status"] == "Available" for r in state["runways"]) == 9
 
 
 @pytest.mark.parametrize("status", ["LANDED", "TAKEOFF_ASSIGNED"])
