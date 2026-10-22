@@ -21,6 +21,7 @@ RUNWAY_ASSIGNED = "RUNWAY_ASSIGNED"    # tower -> radar, includes "runway_id"
 NO_RUNWAY = "NO_RUNWAY"                # tower -> radar
 LANDED = "LANDED"                      # radar -> tower, plane is off the runway (REQ-RAD-014)
 DEPARTED = "DEPARTED"                  # radar -> tower, plane has left (REQ-RAD-014)
+AIRCRAFT_INFO = "AIRCRAFT_INFO"        # radar -> tower, a plane's current data (REQ-RAD-016)
 
 
 def send_to_tower(content):
@@ -75,6 +76,31 @@ def report_departed(conn, aircraft_id, send=send_to_tower):
     # The plane is kept so command can still see it. Old tower replies are harmless: they just
     # set the same runway again, and a new request gets a new reply that overwrites runway_id.
     return request_runway(conn, aircraft_id, DEPARTED, send)
+
+
+# --- radar -> tower: a plane's current data (REQ-RAD-016) ---
+
+def send_aircraft_info(conn, aircraft_id, send=send_to_tower):
+    """Send tower everything radar knows about one plane. Raises ValueError if there's no such plane.
+
+    Returns the message that was sent, as a dict.
+    """
+    plane = get_aircraft(conn, aircraft_id)
+    if plane is None:
+        raise ValueError(f"aircraft {aircraft_id} does not exist")
+    message = {
+        "type": AIRCRAFT_INFO,
+        "aircraft_id": plane.aircraft_id,
+        "latitude": plane.latitude,
+        "longitude": plane.longitude,
+        "altitude": plane.altitude,
+        "status": plane.status,
+        "runway_id": plane.runway_id,  # None until tower assigns one
+        "timestamp": plane.timestamp.strftime(TIME_FORMAT),
+    }
+    send(json.dumps(message))  # tower's inbox shows this as one "field: value" per line
+    return message
+
 
 # --- tower -> radar ---
 

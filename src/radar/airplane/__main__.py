@@ -3,6 +3,8 @@
 # Run from the repo root:
 #   python -m src.radar.airplane create    (asks for each detail, saves it, sends it to tower)
 #   python -m src.radar.airplane list      (shows every airplane in radar.db)
+#   python -m src.radar.airplane set-altitude       (changes a plane's altitude and tells tower, REQ-RAD-015)
+#   python -m src.radar.airplane send-info          (sends one plane's current data to tower, REQ-RAD-016)
 #   python -m src.radar.airplane request-landing    (asks tower for a runway to land)
 #   python -m src.radar.airplane request-takeoff    (asks tower for a runway to take off)
 #   python -m src.radar.airplane check-replies      (reads tower's answers and saves any runway)
@@ -13,10 +15,11 @@
 
 import sys
 
-from src.radar.airplane.aircraft_repo import get_aircraft, init_db
+from src.radar.airplane.aircraft_repo import get_aircraft, init_db, update_altitude
 from src.radar.airplane.create_airplane import create_airplane
 from src.radar.airplane.runway_requests import (
     check_tower_replies, fake_tower_reply, report_departed, report_landed, request_landing, request_takeoff,
+    send_aircraft_info,
 )
 
 STATUSES = ["Parked", "Departing", "Landing"]
@@ -62,6 +65,36 @@ def create(conn):
         print(f"\nNot created: {error}")
         return
     print(f"\nCreated airplane {aircraft_id} and sent it to tower.")
+
+
+def set_altitude(conn):
+    """Change a plane's altitude (REQ-RAD-015), then send tower its updated data (REQ-RAD-016)."""
+    aircraft_id = ask_text("Aircraft ID")
+    altitude = ask_number("New altitude (feet)")
+    try:
+        update_altitude(conn, aircraft_id, altitude)
+    except ValueError as error:  # e.g. no plane with that ID, or a negative altitude
+        print(f"\nNot changed: {error}")
+        return
+    send_aircraft_info(conn, aircraft_id)
+    print(f"\nSet {aircraft_id} altitude to {altitude} feet and sent the update to tower.")
+
+
+def send_info(conn):
+    """Send tower one plane's current data and show what was sent (REQ-RAD-016)."""
+    aircraft_id = ask_text("Aircraft ID")
+    try:
+        info = send_aircraft_info(conn, aircraft_id)
+    except ValueError as error:  # e.g. no plane with that ID
+        print(f"\nNot sent: {error}")
+        return
+    print(f"\nSent {aircraft_id} to tower:")
+    print(f"  Latitude:  {info['latitude']:.4f}")
+    print(f"  Longitude: {info['longitude']:.4f}")
+    print(f"  Altitude:  {info['altitude']:.1f} ft")
+    print(f"  Status:    {info['status']}")
+    print(f"  Runway:    {info['runway_id'] or '-'}")  # "-" when tower hasn't assigned one yet
+    print(f"  Updated:   {info['timestamp']}")
 
 
 def request(conn, ask_tower, kind):
@@ -127,8 +160,8 @@ def show_aircraft(conn):
 def main():
     # sys.argv is what was typed after "python -m src.radar.airplane".
     command = sys.argv[1] if len(sys.argv) > 1 else ""
-    commands = ("create", "list", "request-landing", "request-takeoff", "check-replies", "fake-tower-reply",
-                "report-landed", "report-departed")
+    commands = ("create", "list", "set-altitude", "send-info", "request-landing", "request-takeoff",
+                "check-replies", "fake-tower-reply", "report-landed", "report-departed")
     if command not in commands:
         for number, name in enumerate(commands):
             start = "Usage:" if number == 0 else "      "
@@ -140,6 +173,10 @@ def main():
             create(conn)
         elif command == "list":
             show_aircraft(conn)
+        elif command == "set-altitude":
+            set_altitude(conn)
+        elif command == "send-info":
+            send_info(conn)
         elif command == "request-landing":
             request(conn, request_landing, "landing")
         elif command == "request-takeoff":
