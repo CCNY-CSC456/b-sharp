@@ -1,4 +1,7 @@
-"""REQ-OPS-001 / REQ-OPS-002: airport visibility and Tower messaging."""
+"""REQ-OPS-001 / REQ-OPS-002 / REQ-OPS-003: airport visibility, Tower messaging, and the Airfield palette.
+
+The palette's colors (REQ-OPS-003) are tokens at the top of dashboard.html's <style> block.
+"""
 
 from contextlib import asynccontextmanager
 import logging
