@@ -156,9 +156,52 @@ def mark_processed(conn, msg_key):
     )
 
 
+# def assign_runway(conn, airport_id, aircraft_id, new_status="LANDING_ASSIGNED"):
+#     with conn:
+#         # Check if aircraft already holds a runway
+#         row = conn.execute(
+#             "SELECT runway_id FROM runway_assignments WHERE airport_id = ? AND aircraft_id = ?",
+#             (airport_id, aircraft_id)
+#         ).fetchone()
+#
+#         if row is not None:
+#             runway_id = row[0]
+#             # Update status (e.g., transition from LANDED/LANDING_ASSIGNED to TAKEOFF_ASSIGNED)
+#             conn.execute(
+#                 "UPDATE runway_assignments SET status = ? WHERE airport_id = ? AND aircraft_id = ?",
+#                 (new_status, airport_id, aircraft_id)
+#             )
+#             return runway_id
+#
+#         # Otherwise, assign lowest available runway
+#         row = conn.execute(
+#             """
+#             SELECT r.runway_id
+#             FROM runways r
+#             LEFT JOIN runway_assignments ra
+#                    ON r.airport_id = ra.airport_id AND r.runway_id = ra.runway_id
+#             WHERE r.airport_id = ? AND ra.runway_id IS NULL
+#             ORDER BY r.runway_id LIMIT 1
+#             """,
+#             (airport_id,)
+#         ).fetchone()
+#
+#         if row is None:
+#             return None
+#
+#         runway_id = row[0]
+#         conn.execute(
+#             """
+#             INSERT INTO runway_assignments (airport_id, runway_id, aircraft_id, status, assigned_at)
+#             VALUES (?, ?, ?, ?, ?)
+#             """,
+#             (airport_id, runway_id, aircraft_id, new_status, now())
+#         )
+#     return runway_id
+
 def assign_runway(conn, airport_id, aircraft_id, new_status="LANDING_ASSIGNED"):
     with conn:
-        # Check if aircraft already holds a runway
+        # 1. Re-entrancy check: return existing assignment if aircraft already holds one
         row = conn.execute(
             "SELECT runway_id FROM runway_assignments WHERE airport_id = ? AND aircraft_id = ?",
             (airport_id, aircraft_id)
@@ -166,21 +209,22 @@ def assign_runway(conn, airport_id, aircraft_id, new_status="LANDING_ASSIGNED"):
 
         if row is not None:
             runway_id = row[0]
-            # Update status (e.g., transition from LANDED/LANDING_ASSIGNED to TAKEOFF_ASSIGNED)
             conn.execute(
                 "UPDATE runway_assignments SET status = ? WHERE airport_id = ? AND aircraft_id = ?",
                 (new_status, airport_id, aircraft_id)
             )
             return runway_id
 
-        # Otherwise, assign lowest available runway
+        # 2. Pick lowest runway_id that is 'Available' in `runways` AND free in `runway_assignments`
         row = conn.execute(
             """
             SELECT r.runway_id
             FROM runways r
             LEFT JOIN runway_assignments ra
                    ON r.airport_id = ra.airport_id AND r.runway_id = ra.runway_id
-            WHERE r.airport_id = ? AND ra.runway_id IS NULL
+            WHERE r.airport_id = ?
+              AND r.status = 'Available'
+              AND ra.runway_id IS NULL
             ORDER BY r.runway_id LIMIT 1
             """,
             (airport_id,)
@@ -190,6 +234,8 @@ def assign_runway(conn, airport_id, aircraft_id, new_status="LANDING_ASSIGNED"):
             return None
 
         runway_id = row[0]
+
+        # 3. Insert assignment
         conn.execute(
             """
             INSERT INTO runway_assignments (airport_id, runway_id, aircraft_id, status, assigned_at)
