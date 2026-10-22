@@ -1,4 +1,4 @@
-# REQ-RAD-015
+# REQ-RAD-016
 # Automated tests for sending one plane's current data to tower. CI runs these with: pytest tests/radar
 
 import json

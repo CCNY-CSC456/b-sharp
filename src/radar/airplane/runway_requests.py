@@ -19,7 +19,7 @@ REQUEST_LANDING = "REQUEST_LANDING"    # radar -> tower
 REQUEST_TAKEOFF = "REQUEST_TAKEOFF"    # radar -> tower
 RUNWAY_ASSIGNED = "RUNWAY_ASSIGNED"    # tower -> radar, includes "runway_id"
 NO_RUNWAY = "NO_RUNWAY"                # tower -> radar
-AIRCRAFT_INFO = "AIRCRAFT_INFO"        # radar -> tower, a plane's current data (REQ-RAD-015)
+AIRCRAFT_INFO = "AIRCRAFT_INFO"        # radar -> tower, a plane's current data (REQ-RAD-016)
 
 
 def send_to_tower(content):
@@ -61,7 +61,7 @@ def request_takeoff(conn, aircraft_id, send=send_to_tower):
     return request_runway(conn, aircraft_id, REQUEST_TAKEOFF, send)
 
 
-# --- radar -> tower: a plane's current data (REQ-RAD-015) ---
+# --- radar -> tower: a plane's current data (REQ-RAD-016) ---
 
 def send_aircraft_info(conn, aircraft_id, send=send_to_tower):
     """Send tower everything radar knows about one plane. Raises ValueError if there's no such plane.

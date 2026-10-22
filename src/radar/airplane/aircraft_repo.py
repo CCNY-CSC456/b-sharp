@@ -1,7 +1,7 @@
 # REQ-RAD-012
 # aircraft_repo.py — the ONLY radar file that talks to the database.
 # It can save a new airplane, look one up, set its runway (REQ-RAD-013),
-# and change its altitude (REQ-RAD-014).
+# and change its altitude (REQ-RAD-015).
 #
 # How to use it:
 #   conn = init_db("radar.db")     # open the database once
@@ -95,7 +95,7 @@ def update_runway(conn, aircraft_id, runway_id):
     conn.commit()
 
 
-# REQ-RAD-014
+# REQ-RAD-015
 def update_altitude(conn, aircraft_id, altitude):
     """Set the plane's altitude (feet) and refresh its timestamp to now.
 

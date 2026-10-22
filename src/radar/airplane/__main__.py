@@ -3,8 +3,8 @@
 # Run from the repo root:
 #   python -m src.radar.airplane create    (asks for each detail, saves it, sends it to tower)
 #   python -m src.radar.airplane list      (shows every airplane in radar.db)
-#   python -m src.radar.airplane set-altitude       (changes a plane's altitude and tells tower, REQ-RAD-014)
-#   python -m src.radar.airplane send-info          (sends one plane's current data to tower, REQ-RAD-015)
+#   python -m src.radar.airplane set-altitude       (changes a plane's altitude and tells tower, REQ-RAD-015)
+#   python -m src.radar.airplane send-info          (sends one plane's current data to tower, REQ-RAD-016)
 #   python -m src.radar.airplane request-landing    (asks tower for a runway to land)
 #   python -m src.radar.airplane request-takeoff    (asks tower for a runway to take off)
 #   python -m src.radar.airplane check-replies      (reads tower's answers and saves any runway)
@@ -65,7 +65,7 @@ def create(conn):
 
 
 def set_altitude(conn):
-    """Change a plane's altitude (REQ-RAD-014), then send tower its updated data (REQ-RAD-015)."""
+    """Change a plane's altitude (REQ-RAD-015), then send tower its updated data (REQ-RAD-016)."""
     aircraft_id = ask_text("Aircraft ID")
     altitude = ask_number("New altitude (feet)")
     try:
@@ -78,7 +78,7 @@ def set_altitude(conn):
 
 
 def send_info(conn):
-    """Send tower one plane's current data and show what was sent (REQ-RAD-015)."""
+    """Send tower one plane's current data and show what was sent (REQ-RAD-016)."""
     aircraft_id = ask_text("Aircraft ID")
     try:
         info = send_aircraft_info(conn, aircraft_id)
