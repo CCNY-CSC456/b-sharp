@@ -20,19 +20,12 @@ python -m src.radar.airplane check-replies       # read tower's answers, save an
 ```
 
 ## Done with the runway (REQ-RAD-014)
-There's no menu command for these yet, so run them with `python -c` (change `a1` to your plane's ID).
-
-Landed: tells tower the runway is free. The plane stays in radar.db.
 ```
-python -c "from src.radar.airplane.aircraft_repo import init_db; from src.radar.airplane.runway_requests import report_landed; c = init_db('radar.db'); print(report_landed(c, 'a1')); c.close()"
+python -m src.radar.airplane report-landed       # tell tower the plane landed (plane stays in radar.db)
+python -m src.radar.airplane report-departed     # tell tower the plane left, then remove it from radar.db
 ```
-
-Departed: tells tower the runway is free, then removes the plane from radar.db.
-```
-python -c "from src.radar.airplane.aircraft_repo import init_db; from src.radar.airplane.runway_requests import report_departed; c = init_db('radar.db'); print(report_departed(c, 'a1')); c.close()"
-```
-- Each one prints the message it sent, e.g. `{'type': 'LANDED', 'aircraft_id': 'a1', 'timestamp': '...'}`.
-- If the plane doesn't exist you get `ValueError: aircraft a1 does not exist`, and nothing is sent.
+- Both ask for the aircraft ID. Tower uses these to free the plane's runway.
+- If radar has no plane with that ID, you get `Not sent: aircraft a1 does not exist` and nothing is sent.
 
 ## Messages (tower's messaging)
 ```
@@ -56,10 +49,10 @@ python -m src.radar.airplane create              # a1, 40.77, -73.87, 2000, Land
 python -m src.radar.airplane request-landing     # a1
 python -m src.radar.airplane fake-tower-reply    # a1, R1
 python -m src.radar.airplane check-replies       # a1: runway R1 assigned
-python -c "from src.radar.airplane.aircraft_repo import init_db; from src.radar.airplane.runway_requests import report_landed; c = init_db('radar.db'); print(report_landed(c, 'a1')); c.close()"
+python -m src.radar.airplane report-landed       # a1  ->  Told tower a1 has landed.
 python -m src.tower.messaging inbox              # tower -> last message is LANDED
 python -m src.radar.airplane list                # a1 is still there
-python -c "from src.radar.airplane.aircraft_repo import init_db; from src.radar.airplane.runway_requests import report_departed; c = init_db('radar.db'); print(report_departed(c, 'a1')); c.close()"
+python -m src.radar.airplane report-departed     # a1  ->  Told tower a1 has departed (removed from radar.db).
 python -m src.tower.messaging inbox              # tower -> last message is DEPARTED
 python -m src.radar.airplane list                # a1 is gone
 python -m src.radar.airplane check-replies       # No replies from tower about radar's planes.

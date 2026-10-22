@@ -80,3 +80,19 @@ def test_old_runway_reply_ignored_after_departure():
 def test_delete_aircraft_missing_plane_raises():
     with pytest.raises(ValueError):
         delete_aircraft(init_db(":memory:"), "NOPE")
+
+
+# --- the report-landed / report-departed menu commands ---
+
+def test_report_commands(tmp_path, monkeypatch, capsys):
+    from src.radar.airplane import __main__ as cli
+    from src.tower.messaging import db as tower_db
+    monkeypatch.setattr(tower_db, "DB", str(tmp_path / "test.db"))  # don't touch the real messages.db
+    conn = setup_plane()
+    monkeypatch.setattr("builtins.input", lambda question: "AA123")
+    cli.report(conn, report_landed, "has landed")
+    assert "Told tower AA123 has landed." in capsys.readouterr().out
+    cli.report(conn, report_departed, "has departed")
+    assert get_aircraft(conn, "AA123") is None
+    cli.report(conn, report_landed, "has landed")  # the plane is gone now
+    assert "Not sent" in capsys.readouterr().out

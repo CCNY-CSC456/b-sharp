@@ -7,6 +7,8 @@
 #   python -m src.radar.airplane request-takeoff    (asks tower for a runway to take off)
 #   python -m src.radar.airplane check-replies      (reads tower's answers and saves any runway)
 #   python -m src.radar.airplane fake-tower-reply   (TESTING: pretend to be tower and answer radar)
+#   python -m src.radar.airplane report-landed      (tells tower the plane landed, REQ-RAD-014)
+#   python -m src.radar.airplane report-departed    (tells tower the plane left, then removes it, REQ-RAD-014)
 # Python runs a file named __main__.py when you use "python -m" on its folder.
 
 import sys
@@ -14,7 +16,7 @@ import sys
 from src.radar.airplane.aircraft_repo import get_aircraft, init_db
 from src.radar.airplane.create_airplane import create_airplane
 from src.radar.airplane.runway_requests import (
-    check_tower_replies, fake_tower_reply, request_landing, request_takeoff,
+    check_tower_replies, fake_tower_reply, report_departed, report_landed, request_landing, request_takeoff,
 )
 
 STATUSES = ["Parked", "Departing", "Landing"]
@@ -73,6 +75,17 @@ def request(conn, ask_tower, kind):
     print(f"\nSent {kind} request for {aircraft_id} to tower.")
 
 
+def report(conn, tell_tower, done):
+    """Tell tower a plane is done with its runway. tell_tower is report_landed or report_departed (REQ-RAD-014)."""
+    aircraft_id = ask_text("Aircraft ID")
+    try:
+        tell_tower(conn, aircraft_id)
+    except ValueError as error:  # e.g. no plane with that ID
+        print(f"\nNot sent: {error}")
+        return
+    print(f"\nTold tower {aircraft_id} {done}.")
+
+
 def check_replies(conn):
     """Read tower's answers and print what happened (REQ-RAD-013)."""
     results = check_tower_replies(conn)
@@ -114,7 +127,8 @@ def show_aircraft(conn):
 def main():
     # sys.argv is what was typed after "python -m src.radar.airplane".
     command = sys.argv[1] if len(sys.argv) > 1 else ""
-    commands = ("create", "list", "request-landing", "request-takeoff", "check-replies", "fake-tower-reply")
+    commands = ("create", "list", "request-landing", "request-takeoff", "check-replies", "fake-tower-reply",
+                "report-landed", "report-departed")
     if command not in commands:
         for number, name in enumerate(commands):
             start = "Usage:" if number == 0 else "      "
@@ -132,6 +146,10 @@ def main():
             request(conn, request_takeoff, "takeoff")
         elif command == "check-replies":
             check_replies(conn)
+        elif command == "report-landed":
+            report(conn, report_landed, "has landed")
+        elif command == "report-departed":
+            report(conn, report_departed, "has departed (removed from radar.db)")
         else:
             fake_reply(conn)
     except (KeyboardInterrupt, EOFError):  # Ctrl+C or Ctrl+D while it's asking
