@@ -47,38 +47,75 @@ def radar_inbox():
     """Every reply tower has sent radar, as dicts."""
     return [json.loads(m["content"]) for m in tower_db.get_messages("radar")]
 
+################################################################################
+# # ORD
+# def test_land_then_take_off_then_depart(): # TODO fails from message gc
+#     conn = new_airport()
+#     # The airplane data radar sends on create is not a request and is ignored.
+#     tower_db.save_message("radar", "tower", json.dumps({"aircraft_id": "A1", "status": "Landing"}))
+#
+#     radar_sends(REQUEST_LANDING, "A1", "2026-10-21T22:59:57")
+#     assert answer_requests(conn, "JFK") == [{
+#         "type": RUNWAY_ASSIGNED, "aircraft_id": "A1", "runway_id": 1,
+#         "request": REQUEST_LANDING, "request_timestamp": "2026-10-21T22:59:57",
+#     }]
+#
+#     radar_sends(LANDED, "A1", "2026-10-21T23:16:54")
+#     assert answer_requests(conn, "JFK") == []        # landed: still on its runway, nothing to say
+#     assert runway(conn, 1) == ("Not Available", "A1")
+#
+#     radar_sends(REQUEST_TAKEOFF, "A1", "2026-10-21T23:18:46")
+#     clearance = answer_requests(conn, "JFK")
+#     assert clearance == [{
+#         "type": RUNWAY_ASSIGNED, "aircraft_id": "A1", "runway_id": 1,  # same runway it landed on
+#         "request": REQUEST_TAKEOFF, "request_timestamp": "2026-10-21T23:18:46",
+#     }]
+#     assert radar_inbox()[-1] == clearance[0]           # radar got its clearance for takeoff
+#
+#     radar_sends(DEPARTED, "A1", "2026-10-21T23:32:10")
+#     assert answer_requests(conn, "JFK") == [{"type": FREED, "aircraft_id": "A1", "runway_id": 1}]
+#     assert runway(conn, 1) == ("Available", None)
+#     assert len(radar_inbox()) == 2                     # DEPARTED gets no reply
+#
+#     assert answer_requests(conn, "JFK") == []          # running again changes nothing
+#     assert runway(conn, 1) == ("Available", None)      # the old requests don't take it back
+# # END
 
-def test_land_then_take_off_then_depart(): # TODO fails from message gc
+def test_land_then_take_off_then_depart():
     conn = new_airport()
-    # The airplane data radar sends on create is not a request and is ignored.
+
+    # 1. Ignored non-request payload
     tower_db.save_message("radar", "tower", json.dumps({"aircraft_id": "A1", "status": "Landing"}))
 
+    # 2. Request landing
     radar_sends(REQUEST_LANDING, "A1", "2026-10-21T22:59:57")
     assert answer_requests(conn, "JFK") == [{
         "type": RUNWAY_ASSIGNED, "aircraft_id": "A1", "runway_id": 1,
         "request": REQUEST_LANDING, "request_timestamp": "2026-10-21T22:59:57",
     }]
 
+    # 3. Landed (holds runway, emits no external reply)
     radar_sends(LANDED, "A1", "2026-10-21T23:16:54")
-    assert answer_requests(conn, "JFK") == []        # landed: still on its runway, nothing to say
+    assert answer_requests(conn, "JFK") == []
     assert runway(conn, 1) == ("Not Available", "A1")
 
+    # 4. Request takeoff (gets same runway)
     radar_sends(REQUEST_TAKEOFF, "A1", "2026-10-21T23:18:46")
-    clearance = answer_requests(conn, "JFK")
-    assert clearance == [{
-        "type": RUNWAY_ASSIGNED, "aircraft_id": "A1", "runway_id": 1,  # same runway it landed on
+    assert answer_requests(conn, "JFK") == [{
+        "type": RUNWAY_ASSIGNED, "aircraft_id": "A1", "runway_id": 1,
         "request": REQUEST_TAKEOFF, "request_timestamp": "2026-10-21T23:18:46",
     }]
-    assert radar_inbox()[-1] == clearance[0]           # radar got its clearance for takeoff
 
+    # 5. Departed (frees runway, emits FREED internally)
     radar_sends(DEPARTED, "A1", "2026-10-21T23:32:10")
     assert answer_requests(conn, "JFK") == [{"type": FREED, "aircraft_id": "A1", "runway_id": 1}]
     assert runway(conn, 1) == ("Available", None)
-    assert len(radar_inbox()) == 2                     # DEPARTED gets no reply
 
-    assert answer_requests(conn, "JFK") == []          # running again changes nothing
-    assert runway(conn, 1) == ("Available", None)      # the old requests don't take it back
+    # 6. Idempotency (re-running does nothing)
+    assert answer_requests(conn, "JFK") == []
+    assert runway(conn, 1) == ("Available", None)
 
+################################################################################
 
 def test_landed_keeps_the_runway_for_that_plane():
     conn = new_airport()

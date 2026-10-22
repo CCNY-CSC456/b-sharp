@@ -20,7 +20,7 @@ TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
 # Every airport gets this many runways, numbered 1 to RUNWAY_COUNT.
 RUNWAY_COUNT = 10
 
-HQC = [0, 1, 2, 3, 4, 5, 6, 7];
+HQC = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
 # PRIMARY KEY = no two airports can share an airport_id,
 # and no airport can have two runways with the same runway_id.
@@ -73,6 +73,33 @@ HQC[7] = """
     WHERE airport_id = ? AND runway_id = ? AND status = 'Available'
 """
 
+HQC[8] = """
+SELECT runway_id FROM runways WHERE airport_id = ? AND aircraft_id = ?
+"""
+
+HQC[9] = """
+UPDATE runways SET status = 'Available', aircraft_id = NULL, timestamp = ?
+WHERE airport_id = ? AND runway_id = ?
+"""
+
+HQC[10] = """
+CREATE TABLE IF NOT EXISTS processed_messages (message_id TEXT PRIMARY KEY);
+"""
+
+HQC[11] = """
+-- Dynamic assignments (1:1 constraint between runway and aircraft)
+CREATE TABLE IF NOT EXISTS runway_assignments (
+    airport_id TEXT NOT NULL,
+    runway_id INTEGER NOT NULL,
+    aircraft_id TEXT NOT NULL UNIQUE,
+    status TEXT CHECK(status IN ('LANDING_ASSIGNED', 'LANDED', 'TAKEOFF_ASSIGNED')),
+    assigned_at TEXT NOT NULL,
+    PRIMARY KEY (airport_id, runway_id)
+);
+"""
+
+
+# NOTE: "with conn:" blocks are for making things transactional(*)          *ish
 
 
 def now():
@@ -85,6 +112,8 @@ def create_tables(conn):
     try:
         conn.execute( HQC[0] )
         conn.execute( HQC[1] )
+        conn.execute( HQC[10] )
+        conn.execute( HQC[11] )
         conn.commit()
     except sqlite3.Error:
         return False
@@ -99,7 +128,7 @@ def create_airport(conn, airport_id, perimeter, latitude, longitude):
     Returns True if it was saved, False if not (for example, the airport_id already exists).
     """
     try:
-        with conn: # "with" block makes it transactional, no half-built airport
+        with conn:
             conn.execute( HQC[3], (airport_id, perimeter, latitude, longitude), )
 
             timestamp = now()
@@ -111,49 +140,127 @@ def create_airport(conn, airport_id, perimeter, latitude, longitude):
         return False
     return True
 
+### ORD
+# def assign_runway(conn, airport_id, aircraft_id):
+#     """Give an airplane a runway at this airport. Returns the runway_id, or None if none is free.
+#
+#     The lowest-numbered "Available" runway is used. It becomes "Not Available" and remembers the airplane.
+#     If the airplane already has a runway, that same runway is returned and nothing changes.
+#     That matters because tower's inbox keeps every message, so the same request can be read twice.
+#     """
+#     with conn:
+#
+#         row = conn.execute( HQC[5],(airport_id, aircraft_id), ).fetchone()
+#         if row is not None:
+#             return row[0]
+#
+#         row = conn.execute( HQC[6], (airport_id,), ).fetchone()
+#         if row is None:  # every runway is taken, or there's no such airport
+#             return None
+#         runway_id = row[0]
+#
+#         conn.execute( HQC[7], (aircraft_id, now(), airport_id, runway_id), )
+#     return runway_id
+#
+#
+# def free_runway(conn, airport_id, aircraft_id):
+#     """Free the runway an airplane holds at this airport. Returns that runway_id, or None.
+#
+#     The runway goes back to "Available" with no airplane, so assign_runway() can give it out again.
+#     None means the airplane had no runway here, so nothing changed. Freeing twice is harmless,
+#     which matters because tower's inbox keeps every message, so the same "landed" can be read twice.
+#     """
+#     with conn:
+#         row = conn.execute( HQC[8], (airport_id, aircraft_id), ).fetchone()
+#
+#         if row is None:  # this airplane has no runway here
+#             return None
+#         runway_id = row[0]
+#
+#         conn.execute( HQC[9], (now(), airport_id, runway_id), )
+#     return runway_id
+### END
+
+### NOTE: these fixed the command test that was failing?
+# ORD
+# def is_processed(conn, message_id):
+#     """Check if a message key has already been handled."""
+#     row = conn.execute(
+#         "SELECT 1 FROM processed_messages WHERE message_id = ?", (message_id,)
+#     ).fetchone()
+#     return row is not None
+#
+#
+# def mark_processed(conn, message_id):
+#     """Record a message key to guarantee idempotency across executions."""
+#     with conn:
+#         conn.execute(
+#             "INSERT OR IGNORE INTO processed_messages (message_id) VALUES (?)",
+#             (message_id,),
+#         )
+# END
+
+# check if a message key has already been handled
+def is_processed(conn, msg_key):
+  row = conn.execute(
+    "SELECT 1 FROM processed_messages WHERE message_id = ?", (msg_key,)
+  ).fetchone()
+  return row is not None
+
+# record a message key to guarantee idempotency across executions.
+def mark_processed(conn, msg_key):
+  with conn:
+    conn.execute(
+      "INSERT OR IGNORE INTO processed_messages (message_id) VALUES (?)", (msg_key,)
+    )
+
 
 def assign_runway(conn, airport_id, aircraft_id):
-    """Give an airplane a runway at this airport. Returns the runway_id, or None if none is free.
-
-    The lowest-numbered "Available" runway is used. It becomes "Not Available" and remembers the airplane.
-    If the airplane already has a runway, that same runway is returned and nothing changes.
-    That matters because tower's inbox keeps every message, so the same request can be read twice.
-    """
-    with conn: # with block for look-up & update both in one transaction
-
-        row = conn.execute( HQC[5],(airport_id, aircraft_id), ).fetchone()
+    with conn:
+        row = conn.execute(
+            "SELECT runway_id FROM runway_assignments WHERE airport_id = ? AND aircraft_id = ?",
+            (airport_id, aircraft_id)
+        ).fetchone()
         if row is not None:
             return row[0]
 
-        row = conn.execute( HQC[6], (airport_id,), ).fetchone()
-        if row is None:  # every runway is taken, or there's no such airport
-            return None
-        runway_id = row[0]
-
-        conn.execute( HQC[7], (aircraft_id, now(), airport_id, runway_id), )
-    return runway_id
-
-
-def free_runway(conn, airport_id, aircraft_id):
-    """Free the runway an airplane holds at this airport. Returns that runway_id, or None.
-
-    The runway goes back to "Available" with no airplane, so assign_runway() can give it out again.
-    None means the airplane had no runway here, so nothing changed. Freeing twice is harmless,
-    which matters because tower's inbox keeps every message, so the same "landed" can be read twice.
-    """
-    # "with conn" makes the look-up and the update one step: either both happen or neither does.
-    with conn:
         row = conn.execute(
-            "SELECT runway_id FROM runways WHERE airport_id = ? AND aircraft_id = ?",
-            (airport_id, aircraft_id),
+            """
+            SELECT r.runway_id
+            FROM runways r
+            LEFT JOIN runway_assignments ra
+                   ON r.airport_id = ra.airport_id AND r.runway_id = ra.runway_id
+            WHERE r.airport_id = ? AND ra.runway_id IS NULL
+            ORDER BY r.runway_id LIMIT 1
+            """,
+            (airport_id,)
         ).fetchone()
-        if row is None:  # this airplane has no runway here
+        if row is None:
             return None
         runway_id = row[0]
 
         conn.execute(
-            "UPDATE runways SET status = 'Available', aircraft_id = NULL, timestamp = ? "
-            "WHERE airport_id = ? AND runway_id = ?",
-            (now(), airport_id, runway_id),
+            """
+            INSERT INTO runway_assignments (airport_id, runway_id, aircraft_id, status, assigned_at)
+            VALUES (?, ?, ?, 'LANDING_ASSIGNED', ?)
+            """,
+            (airport_id, runway_id, aircraft_id, now())
+        )
+    return runway_id
+
+
+def free_runway(conn, airport_id, aircraft_id):
+    with conn:
+        row = conn.execute(
+            "SELECT runway_id FROM runway_assignments WHERE airport_id = ? AND aircraft_id = ?",
+            (airport_id, aircraft_id)
+        ).fetchone()
+        if row is None:
+            return None
+        runway_id = row[0]
+
+        conn.execute(
+            "DELETE FROM runway_assignments WHERE airport_id = ? AND aircraft_id = ?",
+            (airport_id, aircraft_id)
         )
     return runway_id
