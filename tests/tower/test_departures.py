@@ -35,13 +35,18 @@ def radar_sends(message_type, aircraft_id, timestamp):
     content = {"type": message_type, "aircraft_id": aircraft_id, "timestamp": timestamp}
     tower_db.save_message("radar", "tower", json.dumps(content))
 
-
+################################################################################
 def runway(conn, runway_id):
-    """The (status, aircraft_id) of one JFK runway."""
-    return conn.execute(
-        "SELECT status, aircraft_id FROM runways WHERE airport_id = 'JFK' AND runway_id = ?", (runway_id,)
+    """Return ("Not Available", aircraft_id) if assigned, else ("Available", None)."""
+    row = conn.execute(
+        "SELECT aircraft_id FROM runway_assignments WHERE airport_id = 'JFK' AND runway_id = ?",
+        (runway_id,)
     ).fetchone()
 
+    if row is None:
+        return ("Available", None)
+    return ("Not Available", row[0])
+################################################################################
 
 def radar_inbox():
     """Every reply tower has sent radar, as dicts."""

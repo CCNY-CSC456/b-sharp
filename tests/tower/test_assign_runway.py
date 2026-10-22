@@ -14,12 +14,18 @@ def new_airport():
     return conn
 
 
+################################################################################
 def runway(conn, runway_id):
-    """The (status, aircraft_id, timestamp) of one JFK runway."""
-    return conn.execute(
-        "SELECT status, aircraft_id, timestamp FROM runways WHERE airport_id = 'JFK' AND runway_id = ?",
-        (runway_id,),
+    """Return ("Not Available", aircraft_id) if assigned, else ("Available", None)."""
+    row = conn.execute(
+        "SELECT aircraft_id FROM runway_assignments WHERE airport_id = 'JFK' AND runway_id = ?",
+        (runway_id,)
     ).fetchone()
+
+    if row is None:
+        return ("Available", None)
+    return ("Not Available", row[0])
+################################################################################
 
 
 def test_new_runways_have_no_airplane():

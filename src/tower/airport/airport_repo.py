@@ -90,7 +90,7 @@ HQC[11] = """
 -- Dynamic assignments (1:1 constraint between runway and aircraft)
 CREATE TABLE IF NOT EXISTS runway_assignments (
     airport_id TEXT NOT NULL,
-    runway_id INTEGER NOT NULL,
+    runway_id INTEGER NOT NULL UNIQUE,
     aircraft_id TEXT NOT NULL UNIQUE,
     status TEXT CHECK(status IN ('LANDING_ASSIGNED', 'LANDED', 'TAKEOFF_ASSIGNED')),
     assigned_at TEXT NOT NULL,
@@ -156,15 +156,24 @@ def mark_processed(conn, msg_key):
     )
 
 
-def assign_runway(conn, airport_id, aircraft_id):
+def assign_runway(conn, airport_id, aircraft_id, new_status="LANDING_ASSIGNED"):
     with conn:
+        # Check if aircraft already holds a runway
         row = conn.execute(
             "SELECT runway_id FROM runway_assignments WHERE airport_id = ? AND aircraft_id = ?",
             (airport_id, aircraft_id)
         ).fetchone()
-        if row is not None:
-            return row[0]
 
+        if row is not None:
+            runway_id = row[0]
+            # Update status (e.g., transition from LANDED/LANDING_ASSIGNED to TAKEOFF_ASSIGNED)
+            conn.execute(
+                "UPDATE runway_assignments SET status = ? WHERE airport_id = ? AND aircraft_id = ?",
+                (new_status, airport_id, aircraft_id)
+            )
+            return runway_id
+
+        # Otherwise, assign lowest available runway
         row = conn.execute(
             """
             SELECT r.runway_id
@@ -176,19 +185,19 @@ def assign_runway(conn, airport_id, aircraft_id):
             """,
             (airport_id,)
         ).fetchone()
+
         if row is None:
             return None
-        runway_id = row[0]
 
+        runway_id = row[0]
         conn.execute(
             """
             INSERT INTO runway_assignments (airport_id, runway_id, aircraft_id, status, assigned_at)
-            VALUES (?, ?, ?, 'LANDING_ASSIGNED', ?)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (airport_id, runway_id, aircraft_id, now())
+            (airport_id, runway_id, aircraft_id, new_status, now())
         )
     return runway_id
-
 
 def free_runway(conn, airport_id, aircraft_id):
     with conn:
