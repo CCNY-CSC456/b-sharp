@@ -1,3 +1,5 @@
+# REQ-TOW-008, REQ-TOW-011
+
 import json
 
 from src.tower.messaging.db import init_db as init_messages_db, save_message, get_messages
