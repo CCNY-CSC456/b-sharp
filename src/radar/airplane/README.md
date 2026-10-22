@@ -1,4 +1,4 @@
-# Airplane commands (REQ-RAD-012, REQ-RAD-013)
+# Airplane commands (REQ-RAD-012, REQ-RAD-013, REQ-RAD-014)
 
 Run everything from the repo root (the `b-sharp` folder), with the venv on:
 ```
@@ -19,6 +19,21 @@ python -m src.radar.airplane fake-tower-reply    # TESTING: answer as tower (emp
 python -m src.radar.airplane check-replies       # read tower's answers, save any runway
 ```
 
+## Done with the runway (REQ-RAD-014)
+There's no menu command for these yet, so run them with `python -c` (change `a1` to your plane's ID).
+
+Landed: tells tower the runway is free. The plane stays in radar.db.
+```
+python -c "from src.radar.airplane.aircraft_repo import init_db; from src.radar.airplane.runway_requests import report_landed; c = init_db('radar.db'); print(report_landed(c, 'a1')); c.close()"
+```
+
+Departed: tells tower the runway is free, then removes the plane from radar.db.
+```
+python -c "from src.radar.airplane.aircraft_repo import init_db; from src.radar.airplane.runway_requests import report_departed; c = init_db('radar.db'); print(report_departed(c, 'a1')); c.close()"
+```
+- Each one prints the message it sent, e.g. `{'type': 'LANDED', 'aircraft_id': 'a1', 'timestamp': '...'}`.
+- If the plane doesn't exist you get `ValueError: aircraft a1 does not exist`, and nothing is sent.
+
 ## Messages (tower's messaging)
 ```
 python -m src.tower.messaging send               # asks sender, recipient, message
@@ -34,6 +49,22 @@ python -m src.radar.airplane fake-tower-reply    # a1, R1
 python -m src.radar.airplane check-replies       # a1: runway R1 assigned
 python -m src.radar.airplane list                # Runway column shows R1
 ```
+
+## Walkthrough: land, then depart (REQ-RAD-014)
+```
+python -m src.radar.airplane create              # a1, 40.77, -73.87, 2000, Landing
+python -m src.radar.airplane request-landing     # a1
+python -m src.radar.airplane fake-tower-reply    # a1, R1
+python -m src.radar.airplane check-replies       # a1: runway R1 assigned
+python -c "from src.radar.airplane.aircraft_repo import init_db; from src.radar.airplane.runway_requests import report_landed; c = init_db('radar.db'); print(report_landed(c, 'a1')); c.close()"
+python -m src.tower.messaging inbox              # tower -> last message is LANDED
+python -m src.radar.airplane list                # a1 is still there
+python -c "from src.radar.airplane.aircraft_repo import init_db; from src.radar.airplane.runway_requests import report_departed; c = init_db('radar.db'); print(report_departed(c, 'a1')); c.close()"
+python -m src.tower.messaging inbox              # tower -> last message is DEPARTED
+python -m src.radar.airplane list                # a1 is gone
+python -m src.radar.airplane check-replies       # No replies from tower about radar's planes.
+```
+The last step shows the old "R1" reply is ignored: a departed plane doesn't get its runway back.
 
 ## Viewing the databases
 Nice formatting:
@@ -54,6 +85,7 @@ python -c "import sqlite3; [print(r) for r in sqlite3.connect('file:messages.db?
 ## Tests
 ```
 pytest tests/radar -v
+pytest tests/radar/test_landed_departed.py -v   # just the LANDED/DEPARTED tests
 pytest tests/tower -v
 ```
 
