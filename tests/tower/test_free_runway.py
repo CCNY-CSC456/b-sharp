@@ -25,29 +25,30 @@ def new_airport():
 #     if row is None:
 #         return ("Available", None)
 #     return ("Not Available", row[0])
-def runway(conn, runway_id):
-    # 1. Is the runway physically closed/out of service?
-    r_row = conn.execute(
-        "SELECT status FROM runways WHERE airport_id = 'JFK' AND runway_id = ?",
-        (runway_id,)
-    ).fetchone()
-    if r_row and r_row[0] == "Not Available":
-        return ("Not Available", None, None)
 
-    # 2. Is there an active aircraft assignment on this runway?
-    ra_row = conn.execute(
-        "SELECT aircraft_id, assigned_at FROM runway_assignments WHERE airport_id = 'JFK' AND runway_id = ?",
-        (runway_id,)
-    ).fetchone()
-    if ra_row is not None:
-        return ("Not Available", ra_row[0], ra_row[1])
-
-    # 3. Otherwise, it is open and unassigned
-    return ("Available", None, None)
+# def runway(conn, runway_id):
+#     # 1. Is the runway physically closed/out of service?
+#     r_row = conn.execute(
+#         "SELECT status FROM runways WHERE airport_id = 'JFK' AND runway_id = ?",
+#         (runway_id,)
+#     ).fetchone()
+#     if r_row and r_row[0] == "Not Available":
+#         return ("Not Available", None, None)
+#
+#     # 2. Is there an active aircraft assignment on this runway?
+#     ra_row = conn.execute(
+#         "SELECT aircraft_id, assigned_at FROM runway_assignments WHERE airport_id = 'JFK' AND runway_id = ?",
+#         (runway_id,)
+#     ).fetchone()
+#     if ra_row is not None:
+#         return ("Not Available", ra_row[0], ra_row[1])
+#
+#     # 3. Otherwise, it is open and unassigned
+#     return ("Available", None, None)
 ################################################################################
 
 
-def test_free_makes_the_runway_available_again():
+def test_free_makes_the_runway_available_again(runway):
     conn = new_airport()
     assign_runway(conn, "JFK", "AA123")
     assert free_runway(conn, "JFK", "AA123") == 1
@@ -57,7 +58,7 @@ def test_free_makes_the_runway_available_again():
     datetime.strptime(timestamp, TIME_FORMAT)  # raises if the format is wrong
 
 
-def test_free_only_changes_that_airplanes_runway():
+def test_free_only_changes_that_airplanes_runway(runway):
     conn = new_airport()
     assign_runway(conn, "JFK", "AA123")  # runway 1
     assign_runway(conn, "JFK", "UA456")  # runway 2
@@ -79,7 +80,7 @@ def test_free_airplane_without_a_runway():
     assert taken == (0,)
 
 
-def test_free_at_unknown_airport():
+def test_free_at_unknown_airport(runway):
     conn = new_airport()
     assign_runway(conn, "JFK", "AA123")
     assert free_runway(conn, "LGA", "AA123") is None

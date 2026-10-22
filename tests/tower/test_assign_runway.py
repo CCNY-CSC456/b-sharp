@@ -25,34 +25,35 @@ def new_airport():
 #     if row is None:
 #         return ("Available", None)
 #     return ("Not Available", row[0])
-def runway(conn, runway_id):
-    # 1. Is the runway physically closed/out of service?
-    r_row = conn.execute(
-        "SELECT status FROM runways WHERE airport_id = 'JFK' AND runway_id = ?",
-        (runway_id,)
-    ).fetchone()
-    if r_row and r_row[0] == "Not Available":
-        return ("Not Available", None, None)
 
-    # 2. Is there an active aircraft assignment on this runway?
-    ra_row = conn.execute(
-        "SELECT aircraft_id, assigned_at FROM runway_assignments WHERE airport_id = 'JFK' AND runway_id = ?",
-        (runway_id,)
-    ).fetchone()
-    if ra_row is not None:
-        return ("Not Available", ra_row[0], ra_row[1])
-
-    # 3. Otherwise, it is open and unassigned
-    return ("Available", None, None)
+# def runway(conn, runway_id):
+#     # 1. Is the runway physically closed/out of service?
+#     r_row = conn.execute(
+#         "SELECT status FROM runways WHERE airport_id = 'JFK' AND runway_id = ?",
+#         (runway_id,)
+#     ).fetchone()
+#     if r_row and r_row[0] == "Not Available":
+#         return ("Not Available", None, None)
+#
+#     # 2. Is there an active aircraft assignment on this runway?
+#     ra_row = conn.execute(
+#         "SELECT aircraft_id, assigned_at FROM runway_assignments WHERE airport_id = 'JFK' AND runway_id = ?",
+#         (runway_id,)
+#     ).fetchone()
+#     if ra_row is not None:
+#         return ("Not Available", ra_row[0], ra_row[1])
+#
+#     # 3. Otherwise, it is open and unassigned
+#     return ("Available", None, None)
 ################################################################################
 
 
-def test_new_runways_have_no_airplane():
+def test_new_runways_have_no_airplane(runway):
     conn = new_airport()
     assert runway(conn, 1)[1] is None
 
 
-def test_assign_gives_runway_1_and_marks_it_taken():
+def test_assign_gives_runway_1_and_marks_it_taken(runway):
     conn = new_airport()
     assert assign_runway(conn, "JFK", "AA123") == 1
     status, aircraft_id, timestamp = runway(conn, 1)
