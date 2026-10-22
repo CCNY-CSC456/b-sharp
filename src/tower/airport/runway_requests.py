@@ -58,7 +58,8 @@ def process_departed(conn, airport_id, aircraft_id, request):
 
 def process_clearance(conn, airport_id, aircraft_id, request):
     req_type = request["type"]
-    runway_id = assign_runway(conn, airport_id, aircraft_id)
+    assignment_status = "TAKEOFF_ASSIGNED" if req_type == REQUEST_TAKEOFF else "LANDING_ASSIGNED"
+    runway_id = assign_runway(conn, airport_id, aircraft_id, new_status=assignment_status)
 
     if runway_id is None:
         reply = {"type": NO_RUNWAY, "aircraft_id": aircraft_id}
