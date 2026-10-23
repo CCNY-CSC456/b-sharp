@@ -113,9 +113,9 @@ def test_aircraft_endpoint_and_independent_missing_radar(radar_database, tower_d
 
 def test_real_radar_to_tower_to_command_flow(tmp_path, monkeypatch):
     """Exercise the current teams' actual schemas and message producers."""
-    from src.radar.airplane.aircraft_repo import init_db as init_radar
+    from src.radar.airplane.aircraft_repo import init_db as init_radar, update_altitude
     from src.radar.airplane.create_airplane import create_airplane
-    from src.radar.airplane.runway_requests import request_landing, report_departed
+    from src.radar.airplane.runway_requests import request_landing, report_departed, send_aircraft_info
     from src.tower.airport.airport_repo import create_tables, create_airport
     from src.tower.airport.runway_requests import answer_requests
 
@@ -140,10 +140,14 @@ def test_real_radar_to_tower_to_command_flow(tmp_path, monkeypatch):
             assert len(assigned) == 1
             assert assigned[0]["status"] == "Not Available"
             assert client.get("/api/aircraft").json()["aircraft"][0]["altitude"] == 3500
+            update_altitude(radar, "FLOW01", 2750)
+            assert client.get("/api/aircraft").json()["aircraft"][0]["altitude"] == 2750
             report_departed(radar, "FLOW01")
             answer_requests(tower, "DEMO-001")
             assert client.get("/api/aircraft").json()["aircraft"] == []
             assert not any(row["aircraft_id"] for row in client.get("/api/airport").json()["runways"])
+            send_aircraft_info(radar, "FLOW01")
+            assert client.get("/api/aircraft").json()["aircraft"] == []
     finally:
         radar.close()
         tower.close()

@@ -89,7 +89,7 @@
 
       .metrics { display: flex; flex-wrap: wrap; gap: 12px 36px; margin: 0; }
 
-      .panel { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: 0 14px 35px rgba(0, 0, 0, .12); }
+      .panel { padding: 21px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: 0 14px 35px rgba(0, 0, 0, .12); }
 
       .metric { margin: 0; }
 
@@ -97,8 +97,6 @@
 
       /* REQ-OPS-004: map (widest), runway availability, Tower messages. */
       .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 280px) minmax(280px, 340px); align-items: stretch; gap: 16px; margin-top: 8px; }
-
-      .panel { padding: 21px; }
 
       .section-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 16px; }
 
@@ -129,9 +127,8 @@
 
       #map-runways { position: absolute; inset: 20% 6% 6%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, minmax(0, 1fr)); gap: 4px 6px; }
 
-      .map-runway { display: grid; place-items: center; min-width: 0; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--text); background: var(--panel-raised); box-shadow: 0 7px 18px rgba(0, 0, 0, .22); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+      .map-runway { display: grid; place-items: center; align-content: center; gap: 2px; padding: 3px; min-width: 0; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--text); background: var(--panel-raised); box-shadow: 0 7px 18px rgba(0, 0, 0, .22); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
       .map-runway.unavailable { border-color: var(--not-available-line); color: var(--not-available); background: var(--not-available-bg); }
-      .map-runway { align-content: center; gap: 2px; padding: 3px; }
       .map-runway > span { position: relative; z-index: 6; background: inherit; padding: 0 1px; }
       .map-aircraft { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
       .map-aircraft.empty { color: var(--muted); font-size: 9px; font-weight: 500; }
@@ -339,6 +336,7 @@
       const messageList = document.getElementById("message-list");
       const messageFeedback = document.getElementById("message-feedback");
       const sendButton = document.getElementById("send-button");
+      const MAP_HALF_WIDTH_METERS = 100000; // Fixed 200 km coordinate span.
       let lastAirportSnapshot = null;
       let lastAircraftSnapshot = null;
       let selectedAircraft = null;
@@ -388,13 +386,13 @@
         else node.removeAttribute("datetime");
       }
 
-      function createRunway(runway, compact = false) {
-        const node = document.createElement(compact ? "li" : "span");
+      function createRunway(runway, sidebar = false) {
+        const node = document.createElement(sidebar ? "li" : "span");
         const unavailable = runway.status !== "Available";
-        node.className = compact ? "runway-card" : "map-runway";
+        node.className = sidebar ? "runway-card" : "map-runway";
         if (unavailable) node.classList.add("unavailable");
 
-        if (compact) {
+        if (sidebar) {
           const id = document.createElement("span");
           id.className = "runway-id";
           id.textContent = runwayLabel(runway);
@@ -570,7 +568,8 @@
       function renderAircraft() {
         const active = document.activeElement;
         const focusedRecord = active?.classList.contains("aircraft-record") ? active.dataset.aircraftId : null;
-        const focusedPosition = (active?.classList.contains("flight-marker") || active?.classList.contains("aircraft-callout")) ? active.dataset.position : null;
+        const focusedCallout = active?.classList.contains("aircraft-callout");
+        const focusedPosition = (active?.classList.contains("flight-marker") || focusedCallout) ? active.dataset.position : null;
         const layer = document.getElementById("aircraft-layer");
         const list = document.getElementById("aircraft-list");
         layer.replaceChildren();
@@ -581,14 +580,12 @@
         const airport = lastAirportSnapshot;
         const canPlot = airport && Number.isFinite(airport.latitude) && Number.isFinite(airport.longitude);
         const aircraft = lastAircraftSnapshot.aircraft;
-        const halfWidth = 100000; // Fixed 200 km span; distant aircraft stay in the list.
-        document.getElementById("map-scale").textContent = `${(halfWidth * 2 / 1000).toLocaleString()} km across · north up`;
         if (!aircraft.some(plane => plane.aircraft_id === selectedAircraft)) selectedAircraft = null;
         const groups = new Map();
         let outside = 0;
 
         for (const plane of aircraft) {
-          const position = canPlot ? projectAircraft(plane, airport, halfWidth) : null;
+          const position = canPlot ? projectAircraft(plane, airport, MAP_HALF_WIDTH_METERS) : null;
           const onMap = position && position.x >= 0 && position.x <= 100 && position.y >= 0 && position.y <= 100;
           if (position && !onMap) outside++;
           if (onMap) {
@@ -625,8 +622,6 @@
           marker.className = `flight-marker${plane.status === "Landing" ? " arrival" : plane.status === "Departing" ? " departure" : ""}`;
           marker.style.left = `${position.x}%`;
           marker.style.top = `${position.y}%`;
-          marker.dataset.x = position.x;
-          marker.dataset.y = position.y;
           if (position.x < 25) marker.classList.add("edge-left");
           if (position.x > 75) marker.classList.add("edge-right");
           if (position.y > 65) marker.classList.add("edge-bottom");
@@ -665,7 +660,9 @@
         document.getElementById("aircraft-summary").textContent = notes.join(" · ");
         const restoreFocus = focusedRecord
           ? [...list.querySelectorAll("button")].find(node => node.dataset.aircraftId === focusedRecord)
-          : [...document.querySelectorAll(".flight-marker")].find(node => node.dataset.position === focusedPosition);
+          : [...document.querySelectorAll(focusedCallout ? ".aircraft-callout" : ".flight-marker")]
+              .find(node => node.dataset.position === focusedPosition)
+            || [...layer.querySelectorAll(".flight-marker")].find(node => node.dataset.position === focusedPosition);
         if (restoreFocus) restoreFocus.focus({ preventScroll: true });
         if (!aircraft.length) {
           const empty = document.createElement("li");
@@ -712,61 +709,61 @@
         if (refreshing) return;
         refreshing = true;
         try {
-        const [airportResult, messagesResult, aircraftResult] = await Promise.allSettled([
-          getJson("/api/airport"),
-          getJson("/api/command-messages"),
-          getJson("/api/aircraft"),
-        ]);
+          const [airportResult, messagesResult, aircraftResult] = await Promise.allSettled([
+            getJson("/api/airport"),
+            getJson("/api/command-messages"),
+            getJson("/api/aircraft"),
+          ]);
 
-        const airportReady = airportResult.status === "fulfilled";
-        const messagesReady = messagesResult.status === "fulfilled";
-        const aircraftReady = aircraftResult.status === "fulfilled";
-        setStatus(!airportReady || !messagesReady || !aircraftReady);
+          const airportReady = airportResult.status === "fulfilled";
+          const messagesReady = messagesResult.status === "fulfilled";
+          const aircraftReady = aircraftResult.status === "fulfilled";
+          setStatus(!airportReady || !messagesReady || !aircraftReady);
 
-        const airportError = document.getElementById("airport-error");
-        if (airportReady) {
-          renderAirport(airportResult.value);
-          lastAirportSnapshot = airportResult.value;
-        } else {
-          if (!lastAirportSnapshot) {
-            document.getElementById("map-label").textContent = "Airport";
-            for (const id of ["airport-perimeter", "airport-coordinates", "airport-runway-count", "airport-updated", "runway-summary"]) {
-              document.getElementById(id).textContent = "—";
+          const airportError = document.getElementById("airport-error");
+          if (airportReady) {
+            renderAirport(airportResult.value);
+            lastAirportSnapshot = airportResult.value;
+          } else {
+            if (!lastAirportSnapshot) {
+              document.getElementById("map-label").textContent = "Airport";
+              for (const id of ["airport-perimeter", "airport-coordinates", "airport-runway-count", "airport-updated", "runway-summary"]) {
+                document.getElementById(id).textContent = "—";
+              }
+              document.getElementById("airport-updated").removeAttribute("datetime");
+              mapRunways.replaceChildren();
+              runwayList.replaceChildren();
             }
-            document.getElementById("airport-updated").removeAttribute("datetime");
-            mapRunways.replaceChildren();
-            runwayList.replaceChildren();
+            document.querySelector(".content-grid").classList.add("stale-data");
+            document.getElementById("airport-source").textContent = lastAirportSnapshot ? "Tower unavailable · last received data" : "Tower data unavailable";
+            airportError.textContent = lastAirportSnapshot
+              ? "Tower data could not be refreshed. The airport center and runway assignments are from the last successful read and may have changed."
+              : "Tower airport data is not available yet. Start Tower with the shared airport database; Command will retry automatically.";
+            airportError.hidden = false;
           }
-          document.querySelector(".content-grid").classList.add("stale-data");
-          document.getElementById("airport-source").textContent = lastAirportSnapshot ? "Tower unavailable · last received data" : "Tower data unavailable";
-          airportError.textContent = lastAirportSnapshot
-            ? "Tower data could not be refreshed. The airport center and runway assignments are from the last successful read and may have changed."
-            : "Tower airport data is not available yet. Start Tower with the shared airport database; Command will retry automatically.";
-          airportError.hidden = false;
-        }
 
-        const aircraftError = document.getElementById("aircraft-error");
-        document.getElementById("map-panel").classList.toggle("radar-stale", !aircraftReady);
-        if (aircraftReady) {
-          lastAircraftSnapshot = aircraftResult.value;
-          aircraftError.hidden = true;
-        } else {
-          aircraftError.textContent = lastAircraftSnapshot
-            ? "Radar positions could not be refreshed. Showing the last successful read; coordinates may have changed."
-            : "Radar positions are unavailable. Start Radar using the shared radar.db; Command will retry automatically.";
-          aircraftError.hidden = false;
-          if (!lastAircraftSnapshot) document.getElementById("aircraft-summary").textContent = "Radar positions unavailable";
-        }
-        renderAircraft();
+          const aircraftError = document.getElementById("aircraft-error");
+          document.getElementById("map-panel").classList.toggle("radar-stale", !aircraftReady);
+          if (aircraftReady) {
+            lastAircraftSnapshot = aircraftResult.value;
+            aircraftError.hidden = true;
+          } else {
+            aircraftError.textContent = lastAircraftSnapshot
+              ? "Radar positions could not be refreshed. Showing the last successful read; coordinates may have changed."
+              : "Radar positions are unavailable. Start Radar using the shared radar.db; Command will retry automatically.";
+            aircraftError.hidden = false;
+            if (!lastAircraftSnapshot) document.getElementById("aircraft-summary").textContent = "Radar positions unavailable";
+          }
+          renderAircraft();
 
-        const messageError = document.getElementById("message-error");
-        if (messagesReady) {
-          renderMessages(messagesResult.value);
-          messageError.hidden = true;
-        } else {
-          messageError.textContent = "Tower messaging is unavailable. The rest of the dashboard remains visible.";
-          messageError.hidden = false;
-        }
+          const messageError = document.getElementById("message-error");
+          if (messagesReady) {
+            renderMessages(messagesResult.value);
+            messageError.hidden = true;
+          } else {
+            messageError.textContent = "Tower messaging is unavailable. The rest of the dashboard remains visible.";
+            messageError.hidden = false;
+          }
         } finally {
           refreshing = false;
         }

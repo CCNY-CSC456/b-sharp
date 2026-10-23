@@ -11,7 +11,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
 def get_airport_state():
-    """Read a consistent snapshot from Tower's current or proposed schema.
+    """Read a consistent snapshot from Tower's current or legacy schema.
 
     COMMAND_TOWER_DB selects a different local database. The default is tower.db
     in this checkout's root, independent of Command's working directory. Missing

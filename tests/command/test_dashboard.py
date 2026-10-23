@@ -34,7 +34,7 @@ def test_airport_endpoint_returns_current_snapshot(client):
     assert state["assignment_source"] == "legacy_runways"
 
 
-def test_command_send_is_visible_to_existing_tower_inbox(client, capsys): # TODO fails from message gc
+def test_command_send_is_visible_to_existing_tower_inbox(client, capsys):
     message = {"sender": "command", "recipient": "tower", "content": "Runway availability request"}
     response = client.post("/messages", json=message)
     assert response.status_code == 200

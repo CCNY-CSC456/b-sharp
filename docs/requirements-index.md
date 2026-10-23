@@ -15,6 +15,5 @@
 | REQ-OPS-004 | Command | Dashboard layout: header row and three panels | src/command/dashboard.html, src/command/dashboard.py | tests/command/test_layout.py | |
 | REQ-OPS-005 | Command | Read local Tower state and display assigned aircraft | src/command/airport.py, src/command/messages.py, src/command/dashboard.py, src/command/dashboard.html | tests/command/test_airport.py, tests/command/test_dashboard.py | |
 | REQ-OPS-006 | Command | Recorded aircraft coordinates around a centered runway schematic | src/command/aircraft.py, src/command/dashboard.py, src/command/dashboard.html | tests/command/test_aircraft.py | |
-
 | REQ-RAD-015 | Radar | Change Aircraft Altitude | src/radar/airplane/aircraft_repo.py, src/radar/airplane/__main__.py | tests/radar/test_altitude.py | |
 | REQ-RAD-016 | Radar | Send Aircraft Info to Tower | src/radar/airplane/runway_requests.py, src/radar/airplane/__main__.py | tests/radar/test_aircraft_info.py | |
