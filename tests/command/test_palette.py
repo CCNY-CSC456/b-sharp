@@ -13,10 +13,9 @@ PALETTE = {
     "--not-available": "#b18cff",  # runway status: Not Available
     "--danger": "#ff6b6b",         # warnings and errors
     "--accent": "#d6d6d2",         # Send button, logo mark, focus ring
+    "--arrival": "#5ab4ff",        # Radar Landing aircraft
+    "--departure": "#ffb02e",      # Radar Departing aircraft
 }
-
-# Reserved for arriving and departing planes in a later requirement.
-RESERVED_FOR_PLANES = ["#5ab4ff", "#ffb02e"]
 
 HEX = re.compile(r"#[0-9a-fA-F]{3,8}\b")
 
@@ -69,10 +68,10 @@ def test_colors_only_come_from_tokens():
     assert HEX.findall(outside_root) == []
 
 
-def test_reserved_plane_colors_are_not_used_yet():
-    css = page_css().lower()
-    for color in RESERVED_FOR_PLANES:
-        assert color not in css
+def test_plane_colors_are_used_for_radar_status():
+    css = page_css()
+    assert "var(--arrival)" in rule(css, ".flight-marker.arrival, .legend-arrival")
+    assert "var(--departure)" in rule(css, ".flight-marker.departure, .legend-departure")
 
 
 def test_page_background_is_flat_charcoal():
@@ -102,7 +101,7 @@ def test_accent_is_light_gray():
     assert "var(--accent)" in rule(css, ".message-input:focus")
 
 
-@pytest.mark.parametrize("text_token", ["--text", "--muted", "--available", "--not-available", "--danger"])
+@pytest.mark.parametrize("text_token", ["--text", "--muted", "--available", "--not-available", "--danger", "--arrival", "--departure"])
 @pytest.mark.parametrize("surface_token", ["--bg", "--panel", "--panel-raised"])
 def test_text_is_readable_on_every_panel(text_token, surface_token):
     defined = tokens(page_css())
@@ -112,4 +111,3 @@ def test_text_is_readable_on_every_panel(text_token, surface_token):
 def test_send_button_text_is_readable():
     defined = tokens(page_css())
     assert contrast(defined["--on-accent"], defined["--accent"]) >= 4.5
-    

@@ -20,4 +20,4 @@ The Command dashboard shall use the Airfield color palette on a charcoal backgro
 
 ## Notes
 
-- Sky blue (`#5ab4ff`) and amber (`#ffb02e`) are reserved for arriving and departing planes, which a later requirement adds. They are not used here, so status colors never mean two things.
+- REQ-OPS-006 uses sky blue (`#5ab4ff`) for Radar's `Landing` aircraft and amber (`#ffb02e`) for `Departing` aircraft. Runway availability retains its green / violet palette.

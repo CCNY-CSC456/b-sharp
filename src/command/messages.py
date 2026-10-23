@@ -8,7 +8,7 @@ from src.tower.messaging import db
 
 
 def get_command_messages():
-    """Read recent history with both current and message_reform recipient names.
+    """Read recent history with unread and previously read recipient names.
 
     Reading directly preserves messages already consumed by Tower's terminal
     utility and lets multiple browser tabs display the same message history.

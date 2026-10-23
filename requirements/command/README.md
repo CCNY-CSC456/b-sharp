@@ -1,6 +1,6 @@
 # Team Command
 
-## R1 Visibility: REQ-OPS-001 through REQ-OPS-005
+## R1 Visibility: REQ-OPS-001 through REQ-OPS-006
 
 From the repository root, using Python 3.12:
 
@@ -38,13 +38,37 @@ from another directory. Tower's existing message service still resolves
 ### What this increment provides
 
 - One page with a square airport schematic, 10 runway boxes, airport coordinates, perimeter, runway count, availability, and timestamps.
+- Recorded Radar aircraft positions around the centered airport schematic. Each marker shows ID, altitude (feet), and latitude / longitude; the list below adds the position timestamp, Radar status, and any matching Tower assignment. Select a marker or record to highlight it. Identical coordinates share a marker that cycles through aircraft when selected.
+- A larger north-up coordinate plot with a fixed 200 km span, covering 100 km north / south / east / west of the airport. The range never expands automatically; outside-range aircraft remain in the list. The smaller centered runway drawing is schematic, not geographically scaled; use **Runway detail** to expand it. Aircraft icons stay at their actual projected coordinates. Only text labels move beside the drawing with connector lines, or below the map when space is limited. Runway text stays above icons so it remains readable. No external map service or internet connection is needed.
 - Actual airport and runway data from Tower, including aircraft IDs in both the runway cards and schematic. No Command demo airport is substituted when Tower is unavailable.
 - Both database contracts are supported: the original layout stores aircraft IDs in `runways`; the new layout uses `runway_assignments`. If the new table exists, it owns aircraft occupancy even when empty, so old aircraft IDs are ignored. The runway's own availability is still respected: an unassigned runway marked `Not Available` is not displayed as free.
 - Assignment labels distinguish landing assigned, landed, and takeoff assigned. Legacy data is labeled as having no aircraft phase information. Command displays the stored phase and does not repair or simulate Tower's transitions.
 - Tower stores perimeter as a single number without specifying a unit. Command shows the value as-is and makes no conversion or geographic-scale claim.
 - Tower's record timestamps are displayed exactly as supplied. `assigned_at` is labeled "Assigned", not "Updated", because the proposed Tower implementation does not refresh it on a phase change. No `Z` is appended to timestamps with an unspecified timezone. A separate `observed_at` value records Command's read time in UTC; a successful read is not proof that the Tower process is running.
 - A Command inbox and send form backed by the existing `messages.db`. Sending still uses Tower's `POST /messages`; the browser reads Command's non-consuming `/api/command-messages` history snapshot. It includes both unread `command` and consumed `command-READ` entries, without changing their recipients. The latest 100 are returned and the page shows the latest 12.
-- Five-second refreshes with bounded reads and no overlapping refreshes. Airport failures leave the last snapshot visibly stale, or show an initial unavailable state. Recovery replaces it with the current state. Messaging failures remain independent.
+- Five-second refreshes with bounded reads and no overlapping refreshes. Airport or Radar failures leave the last snapshot visibly stale, or show an initial unavailable state. Recovery replaces it with the current state. Messaging failures remain independent.
+
+### Aircraft coordinates
+
+Radar owns `radar.db`; Command reads it without changing its schema or records.
+Start Radar from the same checkout root. To select another local Radar store, set
+`COMMAND_RADAR_DB=/absolute/path/to/radar.db` before starting Command.
+
+Aircraft move on the map only when Radar updates their stored coordinates. A
+landing / takeoff request alone does not change their recorded location. An
+aircraft at the airport's coordinates appears at the exact map center. Only its
+text label moves aside to keep the runway information readable; use coordinates
+around the airport to demonstrate incoming and outgoing aircraft.
+For the default airport center `(40.6413, -73.7781)`, `(40.6650, -73.8000)` is
+northwest of the airport and `(40.6200, -73.7500)` is southeast. Create aircraft
+through Radar's normal `python -m src.radar.airplane create` flow.
+
+Invalid coordinates are omitted and counted. Radar currently retains aircraft
+rows after departure, so Command reads explicit Radar lifecycle reports from
+`messages.db` without marking them read. The latest `DEPARTED` report hides that
+retained record; a later Radar request or new telemetry makes it visible again.
+If lifecycle history is unavailable, stored positions remain visible with a
+warning. Empty Tower assignments never imply departure or a runway refusal.
 
 ### Completing the integration check
 
@@ -55,8 +79,7 @@ from another directory. Tower's existing message service still resolves
 5. Temporarily point `COMMAND_TOWER_DB` to a missing path to check the initial unavailable state. Command must not create that file.
 
 Tests use temporary databases for both schema contracts. No Tower source or tests
-are changed. The `message_reform` branch must be merged or provided separately by
-Tower before its table and phase updates exist in the real demo database.
+are changed. Tower owns assignment phase transitions; Command displays their stored values.
 
 ### Verify with Tower's existing terminal utility
 
@@ -89,6 +112,6 @@ Tests use temporary databases and do not change your local messages. CI installs
 
 `runway_assignments` contains assigned aircraft only. Missing rows do not reveal
 whether an aircraft departed, is parked, or was refused a runway. A separate Tower
-contract is needed to display no-runway results. Geographic aircraft movement is
-not represented by the runway schematic. Command polls the database; it does not
+contract is needed to display no-runway results. Geographic positions come from
+Radar and remain separate from the runway schematic. Command polls the databases; it does not
 run Tower's request processor or advance the simulation.
