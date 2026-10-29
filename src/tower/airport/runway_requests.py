@@ -7,13 +7,15 @@ from src.tower.airport.airport_repo import assign_runway, free_runway, mark_proc
 
 REQUEST_LANDING = "REQUEST_LANDING"
 REQUEST_TAKEOFF = "REQUEST_TAKEOFF"
-LANDED = "LANDED"
-DEPARTED = "DEPARTED"
+LANDED          = "LANDED"
+DEPARTED        = "DEPARTED"
 RUNWAY_ASSIGNED = "RUNWAY_ASSIGNED"
-NO_RUNWAY = "NO_RUNWAY"
-FREED = "FREED"
+NO_RUNWAY       = "NO_RUNWAY"
+FREED           = "FREED"
 
-RADAR_MESSAGES = (REQUEST_LANDING, REQUEST_TAKEOFF, LANDED, DEPARTED)
+UPDATE          = "UPDATE"
+
+RADAR_MESSAGES = (REQUEST_LANDING, REQUEST_TAKEOFF, LANDED, DEPARTED, UPDATE)
 
 
 def read_tower_inbox():
@@ -71,14 +73,14 @@ def process_clearance(conn, airport_id, aircraft_id, request):
 
 
 HANDLERS = {
-    LANDED: process_landed,
-    DEPARTED: process_departed,
+    LANDED:          process_landed,
+    DEPARTED:        process_departed,
     REQUEST_LANDING: process_clearance,
     REQUEST_TAKEOFF: process_clearance,
 }
 
 
-def answer_requests(conn, airport_id, get=read_tower_inbox, sent_to_radar=None, send=send_to_radar):
+def answer_requests(conn, airport_id, get=read_tower_inbox, send=send_to_radar):
     results = []
 
     for aircraft_id, request in newest_per_plane(get()).items():

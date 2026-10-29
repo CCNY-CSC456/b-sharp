@@ -56,3 +56,20 @@ def get_messages(recipient):
 
   return [{"sender": s, "recipient": r, "content": c} for _, s, r, c in rows]
 # return [{"sender": s, "recipient": r, "content": c} for s, r, c, t in rows]
+
+
+
+
+def dump_runway_table_json():
+    conn = sqlite3.connect(DB)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM runway_assignments")
+    rows = cursor.fetchall()
+
+    # Extract column names from query description
+    cols = [description[0] for description in cursor.description]
+
+    # Map rows to dictionaries and dump to JSON
+    data = [dict(zip(cols, row)) for row in rows]
+    return json.dumps(data)
+
