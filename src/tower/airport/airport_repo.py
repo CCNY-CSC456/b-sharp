@@ -20,7 +20,11 @@ TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
 # Every airport gets this many runways, numbered 1 to RUNWAY_COUNT.
 RUNWAY_COUNT = 10
 
-HQC = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+# HQC = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, ];
+HQC = []
+
+for i in range(1,100):
+  HQC.insert(i,i)
 
 # PRIMARY KEY = no two airports can share an airport_id,
 # and no airport can have two runways with the same runway_id.
@@ -115,6 +119,46 @@ FROM runway_assignments;
 """
 
 
+HQC[13] = """
+      SELECT r.runway_id
+      FROM runways r
+      LEFT JOIN runway_assignments ra
+             ON r.airport_id = ra.airport_id AND r.runway_id = ra.runway_id
+      WHERE r.airport_id = ?
+        AND r.status = 'Available'
+        AND ra.runway_id IS NULL
+      ORDER BY r.runway_id LIMIT 1
+"""
+
+
+HQC[14] = """
+        CREATE TABLE IF NOT EXISTS ACTIVE (
+        aircraft_id TEXT PRIMARY KEY, latitude REAL, longitude REAL, altitude REAL,
+        status TEXT CHECK(status IN ('Parked','Departing','Landing')), timestamp TEXT,
+        runway_id TEXT)
+"""
+
+HQC[15] =  """
+    INSERT INTO runway_assignments (airport_id, runway_id, aircraft_id, status, assigned_at)
+    VALUES (?, ?, ?, ?, ?)
+"""
+
+HQC[16] = """
+      SELECT runway_id FROM runway_assignments WHERE airport_id = ? AND aircraft_id = ?
+"""
+
+HQC[17] = """
+      UPDATE runway_assignments SET status = ? WHERE airport_id = ? AND aircraft_id = ?
+"""
+
+HQC[18] = """
+      DELETE FROM runway_assignments WHERE airport_id = ? AND aircraft_id = ?
+"""
+
+HQC[19] = """
+    INSERT OR IGNORE INTO processed_messages (message_id) VALUES (?)
+"""
+
 
 # NOTE: "with conn:" blocks are for making things transactional(*)          *ish
 
@@ -127,8 +171,8 @@ def now():
 def create_tables(conn):
     """Create the airport and runways tables if needed. Returns True if both exist afterwards."""
     try:
-        conn.execute( HQC[0] )
-        conn.execute( HQC[1] )
+        conn.execute( HQC[0]  )
+        conn.execute( HQC[1]  )
         conn.execute( HQC[10] )
         conn.execute( HQC[11] )
         conn.execute( HQC[12] )
@@ -174,79 +218,24 @@ def mark_processed(conn, msg_key):
     )
 
 
-# def assign_runway(conn, airport_id, aircraft_id, new_status="LANDING_ASSIGNED"):
-#     with conn:
-#         # Check if aircraft already holds a runway
-#         row = conn.execute(
-#             "SELECT runway_id FROM runway_assignments WHERE airport_id = ? AND aircraft_id = ?",
-#             (airport_id, aircraft_id)
-#         ).fetchone()
-#
-#         if row is not None:
-#             runway_id = row[0]
-#             # Update status (e.g., transition from LANDED/LANDING_ASSIGNED to TAKEOFF_ASSIGNED)
-#             conn.execute(
-#                 "UPDATE runway_assignments SET status = ? WHERE airport_id = ? AND aircraft_id = ?",
-#                 (new_status, airport_id, aircraft_id)
-#             )
-#             return runway_id
-#
-#         # Otherwise, assign lowest available runway
-#         row = conn.execute(
-#             """
-#             SELECT r.runway_id
-#             FROM runways r
-#             LEFT JOIN runway_assignments ra
-#                    ON r.airport_id = ra.airport_id AND r.runway_id = ra.runway_id
-#             WHERE r.airport_id = ? AND ra.runway_id IS NULL
-#             ORDER BY r.runway_id LIMIT 1
-#             """,
-#             (airport_id,)
-#         ).fetchone()
-#
-#         if row is None:
-#             return None
-#
-#         runway_id = row[0]
-#         conn.execute(
-#             """
-#             INSERT INTO runway_assignments (airport_id, runway_id, aircraft_id, status, assigned_at)
-#             VALUES (?, ?, ?, ?, ?)
-#             """,
-#             (airport_id, runway_id, aircraft_id, new_status, now())
-#         )
-#     return runway_id
-
 def assign_runway(conn, airport_id, aircraft_id, new_status="LANDING_ASSIGNED"):
     with conn:
         # 1. Re-entrancy check: return existing assignment if aircraft already holds one
         row = conn.execute(
-            "SELECT runway_id FROM runway_assignments WHERE airport_id = ? AND aircraft_id = ?",
+            HQC[16],
             (airport_id, aircraft_id)
         ).fetchone()
 
         if row is not None:
             runway_id = row[0]
             conn.execute(
-                "UPDATE runway_assignments SET status = ? WHERE airport_id = ? AND aircraft_id = ?",
+                HQC[17],
                 (new_status, airport_id, aircraft_id)
             )
             return runway_id
 
         # 2. Pick lowest runway_id that is 'Available' in `runways` AND free in `runway_assignments`
-        row = conn.execute(
-            """
-            SELECT r.runway_id
-            FROM runways r
-            LEFT JOIN runway_assignments ra
-                   ON r.airport_id = ra.airport_id AND r.runway_id = ra.runway_id
-            WHERE r.airport_id = ?
-              AND r.status = 'Available'
-              AND ra.runway_id IS NULL
-            ORDER BY r.runway_id LIMIT 1
-            """,
-            (airport_id,)
-        ).fetchone()
+        row = conn.execute( HQC[13],(airport_id,)).fetchone()
 
         if row is None:
             return None
@@ -255,18 +244,15 @@ def assign_runway(conn, airport_id, aircraft_id, new_status="LANDING_ASSIGNED"):
 
         # 3. Insert assignment
         conn.execute(
-            """
-            INSERT INTO runway_assignments (airport_id, runway_id, aircraft_id, status, assigned_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (airport_id, runway_id, aircraft_id, new_status, now())
+           HQC[15], (airport_id, runway_id, aircraft_id, new_status, now())
         )
+
     return runway_id
 
 def free_runway(conn, airport_id, aircraft_id):
     with conn:
         row = conn.execute(
-            "SELECT runway_id FROM runway_assignments WHERE airport_id = ? AND aircraft_id = ?",
+            HQC[16],
             (airport_id, aircraft_id)
         ).fetchone()
         if row is None:
@@ -274,7 +260,7 @@ def free_runway(conn, airport_id, aircraft_id):
         runway_id = row[0]
 
         conn.execute(
-            "DELETE FROM runway_assignments WHERE airport_id = ? AND aircraft_id = ?",
+            HQC[18],
             (airport_id, aircraft_id)
         )
     return runway_id
