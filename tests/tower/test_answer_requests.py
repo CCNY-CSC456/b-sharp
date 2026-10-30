@@ -31,7 +31,6 @@ def answer(conn, inbox, already_sent=()):
     replies = answer_requests(
         conn, "JFK",
         get=lambda: inbox,
-        sent_to_radar=lambda: list(already_sent),
         send=lambda content: sent.append(json.loads(content)),
     )
     return replies, sent
@@ -46,9 +45,9 @@ def test_reads_landing_and_takeoff_requests():
 
 def test_ignores_messages_that_are_not_runway_requests():
     assert read_request({"sender": "command", "recipient": "tower", "content": radar_request("AA123")["content"]}) is None
-    assert read_request({"sender": "radar", "recipient": "tower", "content": "hello tower"}) is None
-    assert read_request({"sender": "radar", "recipient": "tower", "content": '{"aircraft_id": "AA123", "status": "Parked"}'}) is None
-    assert read_request({"sender": "radar", "recipient": "tower", "content": '{"type": "REQUEST_LANDING"}'}) is None
+    assert read_request({"sender": "radar",   "recipient": "tower", "content": "hello tower"}) is None
+    assert read_request({"sender": "radar",   "recipient": "tower", "content": '{"aircraft_id": "AA123", "status": "Parked"}'}) is None
+    assert read_request({"sender": "radar",   "recipient": "tower", "content": '{"type": "REQUEST_LANDING"}'}) is None
 
 
 # --- answering requests ---
