@@ -6,7 +6,12 @@
 from src.tower.messaging.db import init_db as init_messages_db, save_message
 
 from src.radar.airplane.aircraft_repo import create_aircraft, now
-from src.radar.airplane.models import AircraftTelemetry
+from src.radar.airplane.models import AircraftTelemetry, AircraftShim
+
+from dataclasses import asdict
+
+from datetime import datetime
+import json
 
 
 def send_to_tower(plane):
@@ -17,7 +22,17 @@ def send_to_tower(plane):
     init_messages_db()  # makes sure the messages table exists (safe to call every time)
     # A message's content is text, so the plane is sent as JSON, like:
     # {"aircraft_id":"AA123","latitude":40.7,...,"timestamp":"2026-10-08T14:30:00"}
-    save_message("radar", "tower", plane.model_dump_json())
+    #save_message("radar", "tower", plane.model_dump_json())
+
+    match plane:
+      case AircraftTelemetry():
+        payload = plane.model_dump_json()
+      case AircraftShim(): # as name suggests, interim shim, so leave ugly!
+        payload = json.dumps(asdict(plane), default=lambda obj: obj.isoformat() if isinstance(obj, datetime) else str(obj))
+      case _:
+        raise TypeError(f"Unsupported airplane type: {type(plane)}")
+
+    save_message("radar", "tower", payload)
 
 
 def create_airplane(conn, aircraft_id, latitude, longitude, altitude, status, send=send_to_tower):

@@ -1,8 +1,11 @@
 from functools import cache
 from pathlib import Path
 
+from enum import StrEnum
+
+
 @cache
-def load_queries(filename: str = "queries.sql") -> dict[str, str]:
+def load_queries(filename: str = "queries.sql") -> StrEnum:
     """Load a named SQL file from the central sql/ directory."""
     # Path(__file__) is src/tower/messaging/query_loader.py
     # .parent.parent moves up to src/tower/
@@ -25,7 +28,7 @@ def load_queries(filename: str = "queries.sql") -> dict[str, str]:
     if current_name:
         queries[current_name] = "\n".join(current_lines).strip()
 
-    return queries
+    return StrEnum("Queries", queries)
 
 
 def load_schema(filename: str) -> str:

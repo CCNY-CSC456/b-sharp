@@ -16,7 +16,7 @@ def new_airport():
 
 def test_free_makes_the_runway_available_again(runway):
     conn = new_airport()
-    assign_runway(conn, "JFK", "AA123")
+    assign_runway(conn, "JFK", "AA123", "LANDING_ASSIGNED")
     assert free_runway(conn, "JFK", "AA123") == 1
     status, aircraft_id, timestamp = runway(conn, 1)
     assert status == "Available"
@@ -26,15 +26,15 @@ def test_free_makes_the_runway_available_again(runway):
 
 def test_free_only_changes_that_airplanes_runway(runway):
     conn = new_airport()
-    assign_runway(conn, "JFK", "AA123")  # runway 1
-    assign_runway(conn, "JFK", "UA456")  # runway 2
+    assign_runway(conn, "JFK", "AA123", "LANDING_ASSIGNED")  # runway 1
+    assign_runway(conn, "JFK", "UA456", "LANDING_ASSIGNED")  # runway 2
     free_runway(conn, "JFK", "AA123")
     assert runway(conn, 2)[:2] == ("Not Available", "UA456")
 
 
 def test_freeing_twice_changes_nothing():
     conn = new_airport()
-    assign_runway(conn, "JFK", "AA123")
+    assign_runway(conn, "JFK", "AA123", "LANDING_ASSIGNED")
     free_runway(conn, "JFK", "AA123")
     assert free_runway(conn, "JFK", "AA123") is None
 
@@ -48,7 +48,7 @@ def test_free_airplane_without_a_runway():
 
 def test_free_at_unknown_airport(runway):
     conn = new_airport()
-    assign_runway(conn, "JFK", "AA123")
+    assign_runway(conn, "JFK", "AA123", "LANDING_ASSIGNED")
     assert free_runway(conn, "LGA", "AA123") is None
     assert runway(conn, 1)[:2] == ("Not Available", "AA123")  # JFK's runway is untouched
 
@@ -56,7 +56,7 @@ def test_free_at_unknown_airport(runway):
 def test_freed_runway_can_be_assigned_again():
     conn = new_airport()
     for n in range(1, 11):
-        assign_runway(conn, "JFK", f"PLANE{n}")
-    assert assign_runway(conn, "JFK", "LATE1") is None  # all 10 taken
+        assign_runway(conn, "JFK", f"PLANE{n}", "LANDING_ASSIGNED")
+    assert assign_runway(conn, "JFK", "LATE1", "LANDING_ASSIGNED") is None  # all 10 taken
     assert free_runway(conn, "JFK", "PLANE3") == 3
-    assert assign_runway(conn, "JFK", "LATE1") == 3     # the freed runway goes to the next plane
+    assert assign_runway(conn, "JFK", "LATE1", "LANDING_ASSIGNED") == 3     # the freed runway goes to the next plane
