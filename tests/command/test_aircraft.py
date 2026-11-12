@@ -6,9 +6,12 @@ import sqlite3
 from fastapi.testclient import TestClient
 import pytest
 
-from src.command import aircraft, dashboard
+from src.command import dashboard
 from src.tower.messaging import db
+from src.tower.messaging import cmd_1 as CMD_1
 
+# this file is why string literals everywhere is a yikes,
+# trying to replace 'aircraft' import for "aircraft.thing"? good luck mo
 
 @pytest.fixture
 def radar_database(tmp_path, monkeypatch):
@@ -24,7 +27,7 @@ def radar_database(tmp_path, monkeypatch):
 
 def test_coordinates_read_without_changing_database(radar_database):
     before = radar_database.read_bytes()
-    state = aircraft.get_aircraft_state()
+    state = CMD_1.get_aircraft_state()
     assert state["aircraft"] == [dict(aircraft_id="AA123", latitude=40.66, longitude=-73.79, altitude=2500,
                                       status="Landing", timestamp="2026-10-22T15:00:00")]
     assert state["observed_at"].endswith("+00:00")
@@ -36,14 +39,14 @@ def test_coordinates_read_without_changing_database(radar_database):
 def test_empty_database_is_valid(radar_database):
     with sqlite3.connect(radar_database) as conn:
         conn.execute("DELETE FROM aircraft")
-    assert aircraft.get_aircraft_state()["aircraft"] == []
+    assert CMD_1.get_aircraft_state()["aircraft"] == []
 
 
 @pytest.mark.parametrize("latitude,longitude", [(91, 0), (-91, 0), (0, 181), (0, -181), (None, 0), (0, "bad"), (float("inf"), 0)])
 def test_invalid_coordinates_omitted_without_breaking_snapshot(radar_database, latitude, longitude):
     with sqlite3.connect(radar_database) as conn:
         conn.execute("INSERT INTO aircraft VALUES ('BAD', ?, ?, 10, 'Landing', 'time')", (latitude, longitude))
-    state = aircraft.get_aircraft_state()
+    state = CMD_1.get_aircraft_state()
     assert len(state["aircraft"]) == 1
     assert state["invalid_coordinate_count"] == 1
     json.dumps(state, allow_nan=False)
@@ -52,7 +55,7 @@ def test_invalid_coordinates_omitted_without_breaking_snapshot(radar_database, l
 def test_unknown_altitude_is_not_misrepresented_as_zero(radar_database):
     with sqlite3.connect(radar_database) as conn:
         conn.execute("UPDATE aircraft SET altitude = ?", (float("inf"),))
-    assert aircraft.get_aircraft_state()["aircraft"][0]["altitude"] is None
+    assert CMD_1.get_aircraft_state()["aircraft"][0]["altitude"] is None
 
 
 def test_explicit_departure_hides_retained_row_without_consuming_messages(radar_database):
@@ -62,7 +65,7 @@ def test_explicit_departure_hides_retained_row_without_consuming_messages(radar_
     db.save_message("radar", "tower", "[]")
     db.save_message("radar", "tower", '{"aircraft_id": []}')
     before = radar_database.with_name("messages.db").read_bytes()
-    state = aircraft.get_aircraft_state()
+    state = CMD_1.get_aircraft_state()
     assert state["aircraft"] == []
     assert state["departed_count"] == 1
     assert state["lifecycle_available"] is True
@@ -80,22 +83,22 @@ def test_later_radar_event_reactivates_aircraft(radar_database, payload):
     db.init_db()
     db.save_message("radar", "tower", json.dumps({"type": "DEPARTED", "aircraft_id": "AA123"}))
     db.save_message("radar", "tower", json.dumps(payload))
-    assert len(aircraft.get_aircraft_state()["aircraft"]) == 1
+    assert len(CMD_1.get_aircraft_state()["aircraft"]) == 1
 
 
 def test_tower_assignment_absence_does_not_hide_aircraft(radar_database, tower_database):
     db.init_db()
     db.save_message("tower", "radar", json.dumps({"type": "DEPARTED", "aircraft_id": "AA123"}))
-    assert len(aircraft.get_aircraft_state()["aircraft"]) == 1
+    assert len(CMD_1.get_aircraft_state()["aircraft"]) == 1
 
 
 def test_default_path_is_checkout_relative(radar_database, monkeypatch, tmp_path):
     monkeypatch.delenv("COMMAND_RADAR_DB")
-    monkeypatch.setattr(aircraft, "REPOSITORY_ROOT", tmp_path)
+    monkeypatch.setattr(CMD_1, "REPOSITORY_ROOT", tmp_path)
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
-    assert len(aircraft.get_aircraft_state()["aircraft"]) == 1
+    assert len(CMD_1.get_aircraft_state()["aircraft"]) == 1
 
 
 def test_aircraft_endpoint_and_independent_missing_radar(radar_database, tower_database, monkeypatch, tmp_path):
@@ -111,7 +114,7 @@ def test_aircraft_endpoint_and_independent_missing_radar(radar_database, tower_d
         assert client.get("/api/command-messages").status_code == 200
 
 
-def test_real_radar_to_tower_to_command_flow(tmp_path, monkeypatch):
+def test_real_radar_to_tower_to_command_flow(tmp_path, monkeypatch): # NOTE: BRO WHAT fine
     """Exercise the current teams' actual schemas and message producers."""
     from src.radar.airplane.aircraft_repo import init_db as init_radar, update_altitude
     from src.radar.airplane.create_airplane import create_airplane
