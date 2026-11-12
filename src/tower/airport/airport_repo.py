@@ -14,15 +14,18 @@
 # this works exactly the same as it did when there was the wall of sql strings
 # those are now in  dedicated .sql files (queries.sql & schema.sql)
 
+# NOTE: changed to StrEnum (string enum) for typo safety, autocomplete, and
+# removing clutter of the brackets and quotes
+
+import sqlite3
 from functools import cache
 from pathlib import Path
-import sqlite3
 from datetime import datetime
 
 
 from src.tower.messaging.query_fetch import load_queries, load_schema
 
-TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
+TIME_FORMAT  = "%Y-%m-%dT%H:%M:%S"
 RUNWAY_COUNT = 10
 
 
@@ -39,16 +42,16 @@ def create_tables(conn):
     except sqlite3.Error:
         return False
 
-    tables = {row[0] for row in conn.execute(QUERIES["check_tables"])}
+    tables = {row[0] for row in conn.execute(QUERIES.check_tables)}
     return {"airport", "runways"} <= tables
 
 def create_airport(conn, airport_id, perimeter, latitude, longitude):
     try:
         with conn:
-            conn.execute(QUERIES["insert_airport"], (airport_id, perimeter, latitude, longitude))
+            conn.execute(QUERIES.insert_airport, (airport_id, perimeter, latitude, longitude))
             timestamp = now()
             conn.executemany(
-                QUERIES["insert_runway"],
+                QUERIES.insert_runway,
                 [(airport_id, runway_id, "Available", timestamp) for runway_id in range(1, RUNWAY_COUNT + 1)]
             )
     except sqlite3.Error:
@@ -56,36 +59,36 @@ def create_airport(conn, airport_id, perimeter, latitude, longitude):
     return True
 
 def is_processed(conn, msg_key):
-    row = conn.execute(QUERIES["check_message_processed"], (msg_key,)).fetchone()
+    row = conn.execute(QUERIES.check_message_processed, (msg_key,)).fetchone()
     return row is not None
 
 def mark_processed(conn, msg_key):
     with conn:
-        conn.execute(QUERIES["mark_message_processed"], (msg_key,))
+        conn.execute(QUERIES.mark_message_processed, (msg_key,))
 
-def assign_runway(conn, airport_id, aircraft_id, new_status="LANDING_ASSIGNED"):
+def assign_runway(conn, airport_id, aircraft_id, new_status): #new_status="LANDING_ASSIGNED"
     with conn:
-        row = conn.execute(QUERIES["get_assignment"], (airport_id, aircraft_id)).fetchone()
+        row = conn.execute(QUERIES.get_assignment, (airport_id, aircraft_id)).fetchone()
         if row is not None:
             runway_id = row[0]
-            conn.execute(QUERIES["update_assignment_status"], (new_status, airport_id, aircraft_id))
+            conn.execute(QUERIES.update_assignment_status, (new_status, airport_id, aircraft_id))
             return runway_id
 
-        row = conn.execute(QUERIES["find_available_runway_joint"], (airport_id,)).fetchone()
+        row = conn.execute(QUERIES.find_available_runway_joint, (airport_id,)).fetchone()
         if row is None:
             return None
 
         runway_id = row[0]
-        conn.execute(QUERIES["insert_runway_assignment"], (airport_id, runway_id, aircraft_id, new_status, now()))
+        conn.execute(QUERIES.insert_runway_assignment, (airport_id, runway_id, aircraft_id, new_status, now()))
 
     return runway_id
 
 def free_runway(conn, airport_id, aircraft_id):
     with conn:
-        row = conn.execute(QUERIES["get_assignment"], (airport_id, aircraft_id)).fetchone()
+        row = conn.execute(QUERIES.get_assignment, (airport_id, aircraft_id)).fetchone()
         if row is None:
             return None
 
         runway_id = row[0]
-        conn.execute(QUERIES["delete_assignment"], (airport_id, aircraft_id))
+        conn.execute(QUERIES.delete_assignment, (airport_id, aircraft_id))
     return runway_id

@@ -22,6 +22,9 @@ from src.radar.airplane.runway_requests import (
     send_aircraft_info,
 )
 
+from src.tower.messaging.query_fetch import load_queries
+QUERIES     = load_queries("queries.sql")
+
 STATUSES = ["Parked", "Departing", "Landing"]
 
 
@@ -142,9 +145,7 @@ def fake_reply(conn):
 
 def show_aircraft(conn):
     """Print every airplane in radar.db as a table with lined-up columns."""
-    rows = conn.execute(
-        "SELECT aircraft_id, latitude, longitude, altitude, status, timestamp, runway_id FROM aircraft"
-    ).fetchall()
+    rows = conn.execute( QUERIES.RDR_B_06 ).fetchall()
     if not rows:
         print("\nNo airplanes in radar.db yet.")
         return

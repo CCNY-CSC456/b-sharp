@@ -13,8 +13,14 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from src.command.airport import get_airport_state
-from src.command.aircraft import get_aircraft_state
-from src.command.messages import get_command_messages
+
+# NOTE these are tower's responsibility
+#from src.command.aircraft import get_aircraft_state
+#from src.command.messages import get_command_messages
+
+from src.tower.messaging.cmd_1 import get_aircraft_state
+from src.tower.messaging.cmd_2 import get_command_messages
+
 from src.tower.messaging import inbox, send
 from src.tower.messaging.db import init_db
 

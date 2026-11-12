@@ -7,6 +7,9 @@ from pathlib import Path
 import sqlite3
 
 
+from src.tower.messaging.query_fetch import load_queries
+QUERIES     = load_queries("queries.sql")
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -22,28 +25,18 @@ def get_airport_state():
     with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=1)) as conn:
         conn.row_factory = sqlite3.Row
         conn.execute("BEGIN")  # Read the tables from one consistent snapshot.
-        airport = conn.execute(
-            "SELECT airport_id, perimeter, latitude, longitude FROM airport WHERE airport_id = ?",
-            (airport_id,),
-        ).fetchone()
+        airport = conn.execute( QUERIES.CMD_A_00, (airport_id,), ).fetchone()
         if airport is None:
             raise sqlite3.OperationalError("The configured airport is not available")
-        rows = conn.execute(
-            "SELECT * FROM runways WHERE airport_id = ? ORDER BY runway_id", (airport_id,)
-        ).fetchall()
+        rows = conn.execute( QUERIES.CMD_A_01, (airport_id,) ).fetchall()
         if not rows:
             raise sqlite3.OperationalError("The configured airport has no runway data")
-        has_assignments = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runway_assignments'"
-        ).fetchone() is not None
+        has_assignments = conn.execute( QUERIES.CMD_A_02 ).fetchone() is not None
         assignments = {}
         if has_assignments:
             assignments = {
                 row["runway_id"]: dict(row)
-                for row in conn.execute(
-                    "SELECT runway_id, aircraft_id, status, assigned_at FROM runway_assignments "
-                    "WHERE airport_id = ?", (airport_id,)
-                )
+                for row in conn.execute( QUERIES.CMD_A_03, (airport_id,) )
             }
 
         runways = []

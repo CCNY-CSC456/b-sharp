@@ -14,10 +14,12 @@ import sqlite3
 from datetime import datetime
 
 from src.radar.airplane.models import AircraftTelemetry
+from src.tower.messaging.query_fetch import load_queries
 
 # Timestamps are stored as text that looks like "2026-10-08T14:30:00".
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
 
+QUERIES     = load_queries("queries.sql")
 
 def now():
     """The current time, cut to whole seconds so it fits TIME_FORMAT exactly."""
@@ -33,12 +35,7 @@ def init_db(db_path="radar.db"):
     conn = sqlite3.connect(db_path)
     # PRIMARY KEY = no two planes can share an aircraft_id.
     # CHECK = the database itself refuses any other status (a second safety net).
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS aircraft ("
-        "aircraft_id TEXT PRIMARY KEY, latitude REAL, longitude REAL, altitude REAL, "
-        "status TEXT CHECK(status IN ('Parked','Departing','Landing')), timestamp TEXT, "
-        "runway_id TEXT)"  # empty (NULL) until tower assigns a runway
-    )
+    conn.execute( QUERIES.RDR_A_00  )# empty (NULL) until tower assigns a runway
     conn.commit()
     return conn
 
@@ -48,9 +45,7 @@ def create_aircraft(conn, plane):
     try:
         # The ? marks are placeholders. SQLite fills them in safely with the values,
         # so nobody can sneak SQL commands in through the data (SQL injection).
-        conn.execute(
-            "INSERT INTO aircraft (aircraft_id, latitude, longitude, altitude, status, timestamp, runway_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        conn.execute( QUERIES.RDR_A_01,
             (plane.aircraft_id, plane.latitude, plane.longitude, plane.altitude,
              plane.status, plane.timestamp.strftime(TIME_FORMAT), plane.runway_id),  # datetime -> text
         )
@@ -62,11 +57,7 @@ def create_aircraft(conn, plane):
 
 def get_aircraft(conn, aircraft_id):
     """Return the plane with this ID as an AircraftTelemetry, or None if there isn't one."""
-    row = conn.execute(
-        "SELECT aircraft_id, latitude, longitude, altitude, status, timestamp, runway_id "
-        "FROM aircraft WHERE aircraft_id = ?",
-        (aircraft_id,),
-    ).fetchone()
+    row = conn.execute( QUERIES.RDR_A_02, (aircraft_id,), ).fetchone()
     if row is None:
         return None
     aircraft_id, latitude, longitude, altitude, status, timestamp, runway_id = row
@@ -86,8 +77,7 @@ def update_runway(conn, aircraft_id, runway_id):
 
     Raises ValueError if there is no plane with this ID.
     """
-    cursor = conn.execute(
-        "UPDATE aircraft SET runway_id = ?, timestamp = ? WHERE aircraft_id = ?",
+    cursor = conn.execute( QUERIES.RDR_A_03,
         (runway_id, now().strftime(TIME_FORMAT), aircraft_id),
     )
     if cursor.rowcount == 0:  # rowcount = how many rows were changed
@@ -98,7 +88,7 @@ def update_runway(conn, aircraft_id, runway_id):
 # REQ-RAD-014
 def delete_aircraft(conn, aircraft_id):
     """Remove the plane with this ID. Raises ValueError if there is no plane with this ID."""
-    cursor = conn.execute("DELETE FROM aircraft WHERE aircraft_id = ?", (aircraft_id,))
+    cursor = conn.execute(QUERIES.RDR_A_04, (aircraft_id,))
     if cursor.rowcount == 0:  # rowcount = how many rows were deleted
         raise ValueError(f"aircraft {aircraft_id} does not exist")
     conn.commit()
@@ -112,8 +102,7 @@ def update_altitude(conn, aircraft_id, altitude):
     """
     if altitude < 0:
         raise ValueError("altitude can't be negative")
-    cursor = conn.execute(
-        "UPDATE aircraft SET altitude = ?, timestamp = ? WHERE aircraft_id = ?",
+    cursor = conn.execute( QUERIES.RDR_A_05,
         (altitude, now().strftime(TIME_FORMAT), aircraft_id),
     )
     if cursor.rowcount == 0:

@@ -110,6 +110,6 @@ def test_real_current_tower_schema_is_readable(tmp_path, monkeypatch):
     with sqlite3.connect(path) as conn:
         assert create_tables(conn)
         assert create_airport(conn, "DEMO-001", 21000, 40.6413, -73.7781)
-        assign_runway(conn, "DEMO-001", "REAL123")
+        assign_runway(conn, "DEMO-001", "REAL123", "LANDING_ASSIGNED")
     monkeypatch.setenv("COMMAND_TOWER_DB", str(path))
     assert airport.get_airport_state()["runways"][0]["aircraft_id"] == "REAL123"

@@ -1,3 +1,6 @@
+-- NOTE: these are from tower & specifically just airport_repo.py
+----|                                 [ORD]                                 |-->
+
 -- name: check_tables
 SELECT name FROM sqlite_master WHERE type='table';
 
@@ -47,3 +50,89 @@ INSERT OR IGNORE INTO processed_messages (message_id) VALUES (?);
 
 -- name: check_message_processed
 SELECT 1 FROM processed_messages WHERE message_id = ?;
+
+----|                                 [END]                                 |-->
+
+
+-- NOTE: from radar at large
+----|                                 [ORD]                                 |-->
+
+-- NOTE: AirplaneAircraftrepoStrings
+
+-- NOTE: the RDR_A_00 query is really a schema, eventually goes in radar/schemas
+
+-- name: RDR_A_00
+CREATE TABLE IF NOT EXISTS aircraft (aircraft_id TEXT PRIMARY KEY, latitude REAL, longitude REAL, altitude REAL, status TEXT CHECK(status IN ('Parked','Departing','Landing')), timestamp TEXT, runway_id TEXT);
+
+-- name: RDR_A_01
+INSERT INTO aircraft (aircraft_id, latitude, longitude, altitude, status, timestamp, runway_id) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- name: RDR_A_02
+SELECT aircraft_id, latitude, longitude, altitude, status, timestamp, runway_id FROM aircraft WHERE aircraft_id = ?;
+
+-- name: RDR_A_03
+UPDATE aircraft SET runway_id = ?, timestamp = ? WHERE aircraft_id = ?;
+
+-- name: RDR_A_04
+DELETE FROM aircraft WHERE aircraft_id = ?;
+
+-- name: RDR_A_05
+UPDATE aircraft SET altitude = ?, timestamp = ? WHERE aircraft_id = ?;
+
+
+
+-- NOTE: AirplanemainStrings
+
+-- name: RDR_B_06
+SELECT aircraft_id, latitude, longitude, altitude, status, timestamp, runway_id FROM aircraft;
+
+
+----|                                 [END]                                 |-->
+
+
+-- NOTE: from command at large
+----|                                 [ORD]                                 |-->
+
+-- NOTE: AirportStrings
+
+-- name: CMD_A_00
+SELECT airport_id, perimeter, latitude, longitude FROM airport WHERE airport_id = ?;
+
+-- name: CMD_A_01
+SELECT * FROM runways WHERE airport_id = ? ORDER BY runway_id;
+
+-- name: CMD_A_02
+SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runway_assignments';
+
+-- name: CMD_A_03
+SELECT runway_id, aircraft_id, status, assigned_at FROM runway_assignments WHERE airport_id = ?;
+
+
+-- NOTE: MessagesStrings
+
+-- name: CMD_B_04
+SELECT rowid, sender, content FROM messages WHERE recipient IN (?, ?) ORDER BY rowid DESC LIMIT 100;
+
+
+-- NOTE: AircraftStrings
+
+-- name: CMD_C_05
+SELECT content FROM messages WHERE sender = 'radar' AND recipient IN ('tower', 'tower-READ') ORDER BY rowid DESC;
+
+-- name: CMD_C_06
+SELECT aircraft_id, latitude, longitude, altitude, status, timestamp FROM aircraft ORDER BY aircraft_id;
+
+----|                                 [END]                                 |-->
+
+
+
+
+
+
+
+
+
+
+
+
+

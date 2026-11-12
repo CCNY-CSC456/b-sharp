@@ -7,21 +7,24 @@ from datetime import datetime
 
 import pytest
 from src.radar.airplane.aircraft_repo import create_aircraft, get_aircraft, init_db, update_runway
-from src.radar.airplane.models import AircraftTelemetry
+from src.radar.airplane.models import AircraftTelemetry, AircraftShim
 from src.radar.airplane.runway_requests import (
     check_tower_replies, fake_tower_reply, request_landing, request_takeoff,
 )
 
 OLD_TIME = datetime(2026, 1, 1, 12, 0, 0)
 
+HARD_CODED_REPLACEMENT_FOR_HARD_CODED_FUNCTION_5 = AircraftShim(
+  aircraft_id="AA123",
+  latitude=40.7769,
+  longitude=-73.8740,
+  altitude=0,
+  status="Parked",
+  timestamp=OLD_TIME,
+)
 
-def setup_plane(aircraft_id="AA123"):
-    conn = init_db(":memory:")
-    create_aircraft(conn, AircraftTelemetry(
-        aircraft_id=aircraft_id, latitude=40.7769, longitude=-73.8740,
-        altitude=0, status="Parked", timestamp=OLD_TIME,
-    ))
-    return conn
+MEM = ":memory:"
+
 
 
 def from_tower(reply):
@@ -37,7 +40,8 @@ def assigned(runway_id, aircraft_id="AA123"):
 # --- radar -> tower ---
 
 def test_request_landing_sends_json():
-    conn = setup_plane()
+    conn = init_db(MEM)
+    create_aircraft(conn, HARD_CODED_REPLACEMENT_FOR_HARD_CODED_FUNCTION_5)
     sent = []  # a fake "messaging service" that just remembers what it was given
     request_landing(conn, "AA123", send=sent.append)
     message = json.loads(sent[0])
@@ -47,14 +51,16 @@ def test_request_landing_sends_json():
 
 
 def test_request_takeoff_sends_json():
-    conn = setup_plane()
+    conn = init_db(MEM)
+    create_aircraft(conn, HARD_CODED_REPLACEMENT_FOR_HARD_CODED_FUNCTION_5)
     sent = []
     request_takeoff(conn, "AA123", send=sent.append)
     assert json.loads(sent[0])["type"] == "REQUEST_TAKEOFF"
 
 
 def test_request_for_missing_plane_raises():
-    conn = setup_plane()
+    conn = init_db(MEM)
+    create_aircraft(conn, HARD_CODED_REPLACEMENT_FOR_HARD_CODED_FUNCTION_5)
     sent = []
     with pytest.raises(ValueError):
         request_landing(conn, "NOPE", send=sent.append)
@@ -64,7 +70,8 @@ def test_request_for_missing_plane_raises():
 # --- tower -> radar ---
 
 def test_runway_assigned_sets_runway_and_timestamp():
-    conn = setup_plane()
+    conn = init_db(MEM)
+    create_aircraft(conn, HARD_CODED_REPLACEMENT_FOR_HARD_CODED_FUNCTION_5)
     results = check_tower_replies(conn, get=lambda: [assigned("R1")])
     plane = get_aircraft(conn, "AA123")
     assert plane.runway_id == "R1"
@@ -73,7 +80,8 @@ def test_runway_assigned_sets_runway_and_timestamp():
 
 
 def test_no_runway_leaves_runway_unchanged():
-    conn = setup_plane()
+    conn = init_db(MEM)
+    create_aircraft(conn, HARD_CODED_REPLACEMENT_FOR_HARD_CODED_FUNCTION_5)
     update_runway(conn, "AA123", "R1")
     no_runway = from_tower({"type": "NO_RUNWAY", "aircraft_id": "AA123"})
     results = check_tower_replies(conn, get=lambda: [no_runway])
@@ -82,7 +90,8 @@ def test_no_runway_leaves_runway_unchanged():
 
 
 def test_checking_twice_is_harmless():
-    conn = setup_plane()
+    conn = init_db(MEM)
+    create_aircraft(conn, HARD_CODED_REPLACEMENT_FOR_HARD_CODED_FUNCTION_5)
     inbox = [assigned("R1")]
     check_tower_replies(conn, get=lambda: inbox)
     first = get_aircraft(conn, "AA123")
@@ -92,13 +101,15 @@ def test_checking_twice_is_harmless():
 
 
 def test_newest_reply_wins():
-    conn = setup_plane()
+    conn = init_db(MEM)
+    create_aircraft(conn, HARD_CODED_REPLACEMENT_FOR_HARD_CODED_FUNCTION_5)
     check_tower_replies(conn, get=lambda: [assigned("R1"), assigned("R2")])
     assert get_aircraft(conn, "AA123").runway_id == "R2"
 
 
 def test_bad_messages_are_skipped():
-    conn = setup_plane()
+    conn = init_db(MEM)
+    create_aircraft(conn, HARD_CODED_REPLACEMENT_FOR_HARD_CODED_FUNCTION_5)
     inbox = [
         from_tower("runway change approved"),                                   # not JSON
         from_tower({"type": "HELLO", "aircraft_id": "AA123"}),                  # unknown type
@@ -113,12 +124,12 @@ def test_bad_messages_are_skipped():
 # --- aircraft_repo.py ---
 
 def test_get_aircraft_missing_returns_none():
-    assert get_aircraft(init_db(":memory:"), "NOPE") is None
+    assert get_aircraft(init_db(MEM), "NOPE") is None
 
 
 def test_update_runway_missing_plane_raises():
     with pytest.raises(ValueError):
-        update_runway(init_db(":memory:"), "NOPE", "R1")
+        update_runway(init_db(MEM), "NOPE", "R1")
 
 
 # --- fake tower reply (testing helper) ---
@@ -132,7 +143,8 @@ def test_fake_tower_reply_builds_the_right_json():
 
 
 def test_fake_tower_reply_is_read_by_check_tower_replies():
-    conn = setup_plane()
+    conn = init_db(MEM)
+    create_aircraft(conn, HARD_CODED_REPLACEMENT_FOR_HARD_CODED_FUNCTION_5)
     sent = []
     fake_tower_reply("AA123", "R1", send=sent.append)
     inbox = [from_tower(content) for content in sent]  # what radar's inbox would hold
