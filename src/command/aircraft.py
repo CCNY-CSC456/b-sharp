@@ -11,6 +11,9 @@ import sqlite3
 from src.command.airport import REPOSITORY_ROOT
 from src.tower.messaging import db
 
+from src.tower.messaging.query_fetch import load_queries
+QUERIES     = load_queries("queries.sql")
+
 
 def finite_number(value):
     """SQLite may contain missing, malformed, or non-finite telemetry."""
@@ -32,10 +35,7 @@ def latest_lifecycle(aircraft_ids):
     path = Path(db.DB).expanduser().resolve()
     try:
         with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=1)) as conn:
-            rows = conn.execute(
-                "SELECT content FROM messages WHERE sender = 'radar' "
-                "AND recipient IN ('tower', 'tower-READ') ORDER BY rowid DESC"
-            )
+            rows = conn.execute( QUERIES.CMD_C_05 )
             for (content,) in rows:
                 try:
                     message = json.loads(content)
@@ -63,10 +63,7 @@ def get_aircraft_state():
     path = Path(os.environ.get("COMMAND_RADAR_DB", str(REPOSITORY_ROOT / "radar.db"))).expanduser().resolve()
     with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=1)) as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT aircraft_id, latitude, longitude, altitude, status, timestamp "
-            "FROM aircraft ORDER BY aircraft_id"
-        ).fetchall()
+        rows = conn.execute( QUERIES.CMD_C_06 ).fetchall()
 
     events, lifecycle_available = latest_lifecycle({row["aircraft_id"] for row in rows})
     aircraft = []
