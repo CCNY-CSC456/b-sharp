@@ -51,6 +51,20 @@ INSERT OR IGNORE INTO processed_messages (message_id) VALUES (?);
 -- name: check_message_processed
 SELECT 1 FROM processed_messages WHERE message_id = ?;
 
+-- name: get_runway_status
+SELECT r.runway_id, ra.aircraft_id, ra.status
+FROM runways r
+LEFT JOIN runway_assignments ra
+    ON r.airport_id = ra.airport_id AND r.runway_id = ra.runway_id
+WHERE r.airport_id = ?
+ORDER BY r.runway_id;
+
+-- name: get_sent_runway_status
+SELECT runway_id, aircraft_id, phase FROM runway_status_sent WHERE airport_id = ?;
+
+-- name: record_sent_runway_status
+INSERT OR REPLACE INTO runway_status_sent (airport_id, runway_id, aircraft_id, phase) VALUES (?, ?, ?, ?);
+
 ----|                                 [END]                                 |-->
 
 

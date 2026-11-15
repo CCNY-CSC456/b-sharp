@@ -1,4 +1,4 @@
-# REQ-TOW-006, REQ-TOW-007, REQ-TOW-009, REQ-TOW-010, REQ-TOW-011
+# REQ-TOW-006, REQ-TOW-007, REQ-TOW-009, REQ-TOW-010, REQ-TOW-011, REQ-TOW-012
 # airport_repo.py — the ONLY tower file that talks to the airport database.
 # It can create the tables, add a new airport, assign a runway, and free it again.
 #
@@ -102,3 +102,17 @@ def set_assignment_status(conn, airport_id, aircraft_id, status):
     """Change the phase of the runway this plane holds (e.g. LANDED). Does nothing if it holds none (REQ-TOW-011)."""
     with conn:
         conn.execute(QUERIES.update_assignment_status, (status, airport_id, aircraft_id))
+
+def get_runway_status(conn, airport_id):
+    """Every runway as (runway_id, aircraft_id, phase); a free runway has None for both (REQ-TOW-012)."""
+    return conn.execute(QUERIES.get_runway_status, (airport_id,)).fetchall()
+
+def get_sent_runway_status(conn, airport_id):
+    """What tower last told command about each runway: {runway_id: (aircraft_id, phase)} (REQ-TOW-012)."""
+    rows = conn.execute(QUERIES.get_sent_runway_status, (airport_id,))
+    return {runway_id: (aircraft_id, phase) for runway_id, aircraft_id, phase in rows}
+
+def record_sent_runway_status(conn, airport_id, runway_id, aircraft_id, phase):
+    """Remember what tower just told command about this runway (REQ-TOW-012)."""
+    with conn:
+        conn.execute(QUERIES.record_sent_runway_status, (airport_id, runway_id, aircraft_id, phase))

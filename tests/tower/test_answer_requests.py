@@ -32,6 +32,7 @@ def answer(conn, inbox, already_sent=()):
         conn, "JFK",
         get=lambda: inbox,
         send=lambda content: sent.append(json.loads(content)),
+        tell_command=lambda content: None,  # command's copy of NO_RUNWAY is tested in test_runway_status.py
     )
     return replies, sent
 

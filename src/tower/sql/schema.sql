@@ -28,6 +28,15 @@ CREATE TABLE IF NOT EXISTS runway_assignments (
     PRIMARY KEY (airport_id, runway_id)
 );
 
+-- REQ-TOW-012: what tower last told command about each runway, so only changes are sent.
+CREATE TABLE IF NOT EXISTS runway_status_sent (
+    airport_id TEXT NOT NULL,
+    runway_id INTEGER NOT NULL,
+    aircraft_id TEXT,
+    phase TEXT,
+    PRIMARY KEY (airport_id, runway_id)
+);
+
 CREATE VIEW IF NOT EXISTS runway_assignments_json AS
 SELECT json_pretty(
     json_group_array(
