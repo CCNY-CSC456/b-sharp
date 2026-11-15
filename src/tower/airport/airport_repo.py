@@ -1,4 +1,4 @@
-# REQ-TOW-006, REQ-TOW-007, REQ-TOW-010
+# REQ-TOW-006, REQ-TOW-007, REQ-TOW-009, REQ-TOW-010
 # airport_repo.py — the ONLY tower file that talks to the airport database.
 # It can create the tables, add a new airport, assign a runway, and free it again.
 #
@@ -92,3 +92,8 @@ def free_runway(conn, airport_id, aircraft_id):
         runway_id = row[0]
         conn.execute(QUERIES.delete_assignment, (airport_id, aircraft_id))
     return runway_id
+
+def get_assigned_runway(conn, airport_id, aircraft_id):
+    """The runway this plane holds right now, or None. Read only (REQ-TOW-009)."""
+    row = conn.execute(QUERIES.get_assignment, (airport_id, aircraft_id)).fetchone()
+    return None if row is None else row[0]
