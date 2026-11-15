@@ -11,7 +11,8 @@ import sys
 
 from src.tower.airport.airport_repo import create_airport, create_tables
 from src.tower.airport.runway_requests import (
-    AIRCRAFT_PARKED, AIRCRAFT_REMOVED, FREED, NO_RUNWAY, PARKED, REQUEST_TAKEOFF, answer_requests, forward_positions,
+    AIRCRAFT_LANDED, AIRCRAFT_PARKED, AIRCRAFT_REMOVED, FREED, NO_RUNWAY, PARKED, REQUEST_TAKEOFF,
+    answer_requests, forward_positions,
 )
 
 # The airport tower runs. Same ID and numbers as Command's dashboard (src/command/airport.py).
@@ -58,6 +59,8 @@ def describe_forwarded(item):
         return f"{plane}: told command it departed"
     if item["type"] == AIRCRAFT_PARKED:
         return f"{plane}: told command it parked"
+    if item["type"] == AIRCRAFT_LANDED:
+        return f"{plane}: told command it landed"
     return f"{plane}: position sent to command (altitude {item['altitude']})"
 
 

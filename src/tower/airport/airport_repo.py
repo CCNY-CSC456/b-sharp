@@ -1,4 +1,4 @@
-# REQ-TOW-006, REQ-TOW-007, REQ-TOW-009, REQ-TOW-010
+# REQ-TOW-006, REQ-TOW-007, REQ-TOW-009, REQ-TOW-010, REQ-TOW-011
 # airport_repo.py — the ONLY tower file that talks to the airport database.
 # It can create the tables, add a new airport, assign a runway, and free it again.
 #
@@ -97,3 +97,8 @@ def get_assigned_runway(conn, airport_id, aircraft_id):
     """The runway this plane holds right now, or None. Read only (REQ-TOW-009)."""
     row = conn.execute(QUERIES.get_assignment, (airport_id, aircraft_id)).fetchone()
     return None if row is None else row[0]
+
+def set_assignment_status(conn, airport_id, aircraft_id, status):
+    """Change the phase of the runway this plane holds (e.g. LANDED). Does nothing if it holds none (REQ-TOW-011)."""
+    with conn:
+        conn.execute(QUERIES.update_assignment_status, (status, airport_id, aircraft_id))

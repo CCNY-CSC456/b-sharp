@@ -10,7 +10,7 @@ import pytest
 from src.tower.airport import __main__ as cli
 from src.tower.airport.airport_repo import create_airport, create_tables
 from src.tower.airport.runway_requests import (
-    AIRCRAFT_PARKED, AIRCRAFT_POSITION, AIRCRAFT_REMOVED, answer_requests, forward_positions,
+    AIRCRAFT_LANDED, AIRCRAFT_PARKED, AIRCRAFT_POSITION, AIRCRAFT_REMOVED, answer_requests, forward_positions,
 )
 from src.tower.messaging import db as tower_db
 
@@ -163,6 +163,33 @@ def test_departed_and_parked_wait_until_tower_has_handled_them(tower):
     assert [m["type"] for m in forward_positions(tower, "JFK")] == [AIRCRAFT_PARKED, AIRCRAFT_REMOVED]
 
 
+def test_landed_is_forwarded_after_tower_handles_it(tower):
+    radar_sends({"type": "REQUEST_LANDING", "aircraft_id": "A1", "timestamp": "2026-11-15T10:01:00"})
+    answer_requests(tower, "JFK")
+    radar_sends({"type": "LANDED", "aircraft_id": "A1", "timestamp": "2026-11-15T10:05:00"})
+    assert forward_positions(tower, "JFK") == []  # tower hasn't handled LANDED yet
+    answer_requests(tower, "JFK")                 # records the landing (runway kept)
+    forward_positions(tower, "JFK")
+    assert command_inbox()[-1] == {"type": AIRCRAFT_LANDED, "aircraft_id": "A1", "timestamp": "2026-11-15T10:05:00"}
+
+
+def test_full_lifecycle_order_for_command(tower):
+    radar_sends(created("A1"))
+    radar_sends({"type": "REQUEST_LANDING", "aircraft_id": "A1", "timestamp": "2026-11-15T10:01:00"})
+    answer_requests(tower, "JFK"); forward_positions(tower, "JFK")
+    radar_sends({"type": "LANDED", "aircraft_id": "A1", "timestamp": "2026-11-15T10:05:00"})
+    answer_requests(tower, "JFK"); forward_positions(tower, "JFK")
+    radar_sends({"type": "PARKED", "aircraft_id": "A1", "timestamp": "2026-11-15T10:10:00"})
+    answer_requests(tower, "JFK"); forward_positions(tower, "JFK")
+    radar_sends({"type": "REQUEST_TAKEOFF", "aircraft_id": "A1", "timestamp": "2026-11-15T11:00:00"})
+    answer_requests(tower, "JFK"); forward_positions(tower, "JFK")
+    radar_sends({"type": "DEPARTED", "aircraft_id": "A1", "timestamp": "2026-11-15T11:05:00"})
+    answer_requests(tower, "JFK"); forward_positions(tower, "JFK")
+    assert [m["type"] for m in command_inbox()] == [
+        AIRCRAFT_POSITION, AIRCRAFT_LANDED, AIRCRAFT_PARKED, AIRCRAFT_REMOVED,
+    ]
+
+
 def test_command_output(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)  # tower.db gets created here, not in the repo
     radar_sends(created("A1"))
@@ -178,3 +205,8 @@ def test_command_output(tmp_path, monkeypatch, capsys):
     cli.main()
     out = capsys.readouterr().out
     assert "B2: parked, runway 1 freed" in out and "B2: told command it parked" in out
+    radar_sends({"type": "REQUEST_LANDING", "aircraft_id": "C3", "timestamp": "2026-11-15T10:05:00"})
+    cli.main()
+    radar_sends({"type": "LANDED", "aircraft_id": "C3", "timestamp": "2026-11-15T10:06:00"})
+    cli.main()
+    assert "C3: told command it landed" in capsys.readouterr().out
