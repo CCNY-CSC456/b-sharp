@@ -240,3 +240,40 @@ def test_parked_command_output(tmp_path, monkeypatch, capsys):
     radar_sends(PARKED, "A1", "2026-11-15T10:10:00")
     cli.main()
     assert "A1: parked, runway 1 freed" in capsys.readouterr().out
+
+
+# --- the runway's phase: LANDING_ASSIGNED -> LANDED -> TAKEOFF_ASSIGNED ---
+
+def phase(conn, aircraft_id):
+    row = conn.execute(
+        "SELECT status FROM runway_assignments WHERE airport_id = 'JFK' AND aircraft_id = ?", (aircraft_id,)
+    ).fetchone()
+    return None if row is None else row[0]
+
+
+def test_runway_phase_follows_the_plane():
+    conn = new_airport()
+    radar_sends(REQUEST_LANDING, "A1", "2026-11-15T10:00:00")
+    answer_requests(conn, "JFK")
+    assert phase(conn, "A1") == "LANDING_ASSIGNED"
+    radar_sends(LANDED, "A1", "2026-11-15T10:05:00")
+    assert answer_requests(conn, "JFK") == []  # no reply to radar
+    assert phase(conn, "A1") == "LANDED"
+    assert runway(conn, 1) == ("Not Available", "A1")  # landed: still holds the runway
+    radar_sends(REQUEST_TAKEOFF, "A1", "2026-11-15T10:20:00")
+    answer_requests(conn, "JFK")
+    assert phase(conn, "A1") == "TAKEOFF_ASSIGNED"
+
+
+def test_takeoff_from_the_ground_is_takeoff_assigned():
+    conn = new_airport()
+    radar_sends(REQUEST_TAKEOFF, "B2", "2026-11-15T10:00:00")
+    answer_requests(conn, "JFK")
+    assert phase(conn, "B2") == "TAKEOFF_ASSIGNED"
+
+
+def test_landed_without_a_runway_does_nothing():
+    conn = new_airport()
+    radar_sends(LANDED, "A1", "2026-11-15T10:05:00")
+    assert answer_requests(conn, "JFK") == []
+    assert phase(conn, "A1") is None

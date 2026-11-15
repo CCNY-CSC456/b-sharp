@@ -4,7 +4,7 @@ import json
 
 from src.tower.messaging.db import init_db as init_messages_db, save_message, get_messages
 from src.tower.airport.airport_repo import (
-    assign_runway, free_runway, get_assigned_runway, mark_processed, is_processed,
+    assign_runway, free_runway, get_assigned_runway, mark_processed, is_processed, set_assignment_status,
 )
 
 REQUEST_LANDING = "REQUEST_LANDING"
@@ -21,7 +21,16 @@ AIRCRAFT_INFO     = "AIRCRAFT_INFO"      # radar -> tower (radar's create messag
 AIRCRAFT_POSITION = "AIRCRAFT_POSITION"  # tower -> command: a plane's latest position
 AIRCRAFT_REMOVED  = "AIRCRAFT_REMOVED"   # tower -> command: the plane departed (its runway is already freed)
 AIRCRAFT_PARKED   = "AIRCRAFT_PARKED"    # tower -> command: the plane parked (its runway is already freed)
+AIRCRAFT_LANDED   = "AIRCRAFT_LANDED"    # tower -> command: the plane landed (still on its runway)
 POSITION_FIELDS   = ("aircraft_id", "latitude", "longitude", "altitude", "status", "timestamp")
+
+# Radar's lifecycle events and what tower tells command, once tower has handled them.
+FORWARDED_EVENTS  = {LANDED: AIRCRAFT_LANDED, PARKED: AIRCRAFT_PARKED, DEPARTED: AIRCRAFT_REMOVED}
+
+# The phase stored in runway_assignments (command shows it on the runway).
+LANDING_ASSIGNED  = "LANDING_ASSIGNED"
+LANDED_PHASE      = "LANDED"
+TAKEOFF_ASSIGNED  = "TAKEOFF_ASSIGNED"
 
 # Runway messages: only each plane's newest one is answered (see newest_per_plane).
 # Position updates are NOT in here, so an update can never hide a runway request that's waiting.
@@ -63,6 +72,8 @@ def read_request(message):
 
 
 def process_landed(conn, airport_id, aircraft_id, request):
+    """The plane is down but still on its runway: keep the runway, record it as LANDED. No reply to radar."""
+    set_assignment_status(conn, airport_id, aircraft_id, LANDED_PHASE)
     return None
 
 
@@ -83,7 +94,8 @@ def process_parked(conn, airport_id, aircraft_id, request):
 
 def process_clearance(conn, airport_id, aircraft_id, request):
     req_type = request["type"]
-    runway_id = assign_runway(conn, airport_id, aircraft_id, "LANDING_ASSIGNED")
+    phase = TAKEOFF_ASSIGNED if req_type == REQUEST_TAKEOFF else LANDING_ASSIGNED
+    runway_id = assign_runway(conn, airport_id, aircraft_id, phase)
 
     if runway_id is None:
         reply = {"type": NO_RUNWAY, "aircraft_id": aircraft_id}
@@ -160,10 +172,11 @@ def read_position(message):
 
 
 def forward_positions(conn, airport_id, get=read_tower_inbox, send=send_to_command):
-    """Send command every new plane position from radar, and tell it when a plane departs or parks.
+    """Send command every new plane position from radar, and tell it when a plane lands, parks, or departs.
 
-    DEPARTED and PARKED are only passed on once answer_requests has handled them (freed the runway),
-    so command never hears about them before tower has acted. Until then they wait for a later run.
+    LANDED, PARKED, and DEPARTED are only passed on once answer_requests has handled them (recorded the
+    landing / freed the runway), so command never hears about them before tower has acted.
+    Until then they wait for a later run.
     Messages are handled in the order radar sent them, each one once, so command can keep the newest
     message per plane. Returns what was sent, as dicts.
     `get` and `send` are only there so tests can swap in fakes.
@@ -178,11 +191,11 @@ def forward_positions(conn, airport_id, get=read_tower_inbox, send=send_to_comma
                    "runway_id": get_assigned_runway(conn, airport_id, aircraft_id)}  # tower's runway, not radar's
             # Timestamps are to the second, so include the data: a real change is new, an exact repeat isn't.
             key = f"{aircraft_id}:{AIRCRAFT_POSITION}:" + json.dumps(position, sort_keys=True)
-        elif request is not None and request["type"] in (DEPARTED, PARKED):
+        elif request is not None and request["type"] in FORWARDED_EVENTS:
             aircraft_id, timestamp = request["aircraft_id"], request.get("timestamp")
             if not is_processed(conn, f"{aircraft_id}:{request['type']}:{timestamp}"):
-                continue  # answer_requests hasn't freed the runway yet; send it on a later run
-            out_type = AIRCRAFT_REMOVED if request["type"] == DEPARTED else AIRCRAFT_PARKED
+                continue  # answer_requests hasn't handled it yet; send it on a later run
+            out_type = FORWARDED_EVENTS[request["type"]]
             out = {"type": out_type, "aircraft_id": aircraft_id, "timestamp": timestamp}
             key = f"{aircraft_id}:{out_type}:{timestamp}"
         else:
