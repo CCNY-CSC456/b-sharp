@@ -17,3 +17,4 @@
 | REQ-OPS-006 | Command | Recorded aircraft coordinates around a centered runway schematic | src/command/aircraft.py, src/command/dashboard.py, src/command/dashboard.html | tests/command/test_aircraft.py | |
 | REQ-RAD-015 | Radar | Change Aircraft Altitude | src/radar/airplane/aircraft_repo.py, src/radar/airplane/__main__.py | tests/radar/test_altitude.py | |
 | REQ-RAD-016 | Radar | Send Aircraft Info to Tower | src/radar/airplane/runway_requests.py, src/radar/airplane/__main__.py | tests/radar/test_aircraft_info.py | |
+| REQ-TOW-009 | Tower | Forward Plane Positions to Command | src/tower/airport/runway_requests.py, src/tower/airport/__main__.py | tests/tower/test_forward_positions.py | |

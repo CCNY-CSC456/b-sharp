@@ -2,6 +2,7 @@
 # Automated tests for takeoff clearance and departures. CI runs these with: pytest tests/tower
 # These use the real messaging service on a throwaway messages.db, in the same order radar sends:
 #   created -> REQUEST_LANDING -> LANDED -> REQUEST_TAKEOFF -> DEPARTED
+#   created -> REQUEST_LANDING -> LANDED -> PARKED (frees the runway)
 
 import json
 import sqlite3
@@ -11,7 +12,7 @@ import pytest
 from src.tower.airport import __main__ as cli
 from src.tower.airport.airport_repo import create_airport, create_tables
 from src.tower.airport.runway_requests import (
-    DEPARTED, FREED, LANDED, NO_RUNWAY, REQUEST_LANDING, REQUEST_TAKEOFF, RUNWAY_ASSIGNED, answer_requests,
+    DEPARTED, FREED, LANDED, NO_RUNWAY, PARKED, REQUEST_LANDING, REQUEST_TAKEOFF, RUNWAY_ASSIGNED, answer_requests,
 )
 from src.tower.messaging import db as tower_db
 
@@ -174,3 +175,68 @@ def test_command_output(tmp_path, monkeypatch, capsys):
     assert "A1: departed, runway 1 freed" in capsys.readouterr().out
     cli.main()
     assert "Nothing new to answer." in capsys.readouterr().out
+
+
+# --- PARKED frees the runway ---
+
+def test_parked_frees_the_runway():
+    conn = new_airport()
+    radar_sends(REQUEST_LANDING, "A1", "2026-11-15T10:00:00")
+    answer_requests(conn, "JFK")
+    radar_sends(LANDED, "A1", "2026-11-15T10:05:00")
+    answer_requests(conn, "JFK")
+    assert runway(conn, 1) == ("Not Available", "A1")  # landed: still on its runway
+    radar_sends(PARKED, "A1", "2026-11-15T10:10:00")
+    assert answer_requests(conn, "JFK") == [
+        {"type": FREED, "aircraft_id": "A1", "runway_id": 1, "reason": PARKED},
+    ]
+    assert runway(conn, 1) == ("Available", None)
+    assert len(radar_inbox()) == 1  # only the landing clearance: PARKED gets no reply
+
+
+def test_parked_runway_goes_to_the_next_plane():
+    conn = new_airport()
+    radar_sends(REQUEST_LANDING, "A1", "2026-11-15T10:00:00")
+    answer_requests(conn, "JFK")
+    radar_sends(PARKED, "A1", "2026-11-15T10:10:00")
+    radar_sends(REQUEST_LANDING, "B2", "2026-11-15T10:11:00")
+    answer_requests(conn, "JFK")
+    assert runway(conn, 1) == ("Not Available", "B2")
+
+
+def test_old_request_is_not_answered_again_after_parking():
+    conn = new_airport()
+    radar_sends(REQUEST_LANDING, "A1", "2026-11-15T10:00:00")
+    answer_requests(conn, "JFK")
+    radar_sends(PARKED, "A1", "2026-11-15T10:10:00")
+    answer_requests(conn, "JFK")
+    assert answer_requests(conn, "JFK") == []
+    assert runway(conn, 1) == ("Available", None)  # the old landing request doesn't take it back
+
+
+def test_parked_plane_can_ask_to_take_off():
+    conn = new_airport()
+    radar_sends(REQUEST_LANDING, "A1", "2026-11-15T10:00:00")
+    answer_requests(conn, "JFK")
+    radar_sends(PARKED, "A1", "2026-11-15T10:10:00")
+    answer_requests(conn, "JFK")
+    radar_sends(REQUEST_TAKEOFF, "A1", "2026-11-15T11:00:00")
+    results = answer_requests(conn, "JFK")
+    assert results[0]["type"] == RUNWAY_ASSIGNED and results[0]["request"] == REQUEST_TAKEOFF
+
+
+def test_parked_without_a_runway_does_nothing():
+    conn = new_airport()
+    radar_sends(PARKED, "A1", "2026-11-15T10:00:00")
+    assert answer_requests(conn, "JFK") == []
+
+
+def test_parked_command_output(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)  # tower.db gets created here, not in the repo
+    monkeypatch.setattr("sys.argv", ["python -m src.tower.airport", "answer-requests"])
+    radar_sends(REQUEST_LANDING, "A1", "2026-11-15T10:00:00")
+    cli.main()
+    capsys.readouterr()
+    radar_sends(PARKED, "A1", "2026-11-15T10:10:00")
+    cli.main()
+    assert "A1: parked, runway 1 freed" in capsys.readouterr().out

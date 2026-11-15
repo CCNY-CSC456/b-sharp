@@ -1,7 +1,8 @@
-# REQ-TOW-008, REQ-TOW-011
+# REQ-TOW-008, REQ-TOW-009, REQ-TOW-011
 # __main__.py — answer radar's runway requests from the terminal.
 # Run from the repo root:
-#   python -m src.tower.airport answer-requests   (reads tower's inbox, assigns and frees runways, replies to radar)
+#   python -m src.tower.airport answer-requests   (reads tower's inbox, assigns and frees runways, replies to radar,
+#                                                  and forwards plane positions to command)
 #   python -m src.tower.airport runways           (shows every runway in tower.db)
 # Python runs a file named __main__.py when you use "python -m" on its folder.
 
@@ -9,7 +10,9 @@ import sqlite3
 import sys
 
 from src.tower.airport.airport_repo import create_airport, create_tables
-from src.tower.airport.runway_requests import FREED, NO_RUNWAY, REQUEST_TAKEOFF, answer_requests
+from src.tower.airport.runway_requests import (
+    AIRCRAFT_PARKED, AIRCRAFT_REMOVED, FREED, NO_RUNWAY, PARKED, REQUEST_TAKEOFF, answer_requests, forward_positions,
+)
 
 # The airport tower runs. Same ID and numbers as Command's dashboard (src/command/airport.py).
 AIRPORT_ID = "DEMO-001"
@@ -25,18 +28,37 @@ def open_airport():
 
 def answer(conn):
     results = answer_requests(conn, AIRPORT_ID)
-    if not results:
+    # Second, so runways are already freed / assigned before command hears about them.
+    forwarded = forward_positions(conn, AIRPORT_ID)
+    if not results and not forwarded:
         print("Nothing new to answer.")
     for result in results:
-        plane = result["aircraft_id"]
-        if result["type"] == FREED:
-            print(f"{plane}: departed, runway {result['runway_id']} freed")
-        elif result["type"] == NO_RUNWAY:
-            print(f"{plane}: no runway available")
-        elif result["request"] == REQUEST_TAKEOFF:
-            print(f"{plane}: cleared for takeoff on runway {result['runway_id']}")
-        else:
-            print(f"{plane}: cleared to land on runway {result['runway_id']}")
+        print(describe_result(result))
+    for item in forwarded:
+        print(describe_forwarded(item))
+
+
+def describe_result(result):
+    """One line for something tower decided (a runway answer or a freed runway)."""
+    plane = result["aircraft_id"]
+    if result["type"] == FREED:
+        how = "parked" if result.get("reason") == PARKED else "departed"
+        return f"{plane}: {how}, runway {result['runway_id']} freed"
+    if result["type"] == NO_RUNWAY:
+        return f"{plane}: no runway available"
+    if result["request"] == REQUEST_TAKEOFF:
+        return f"{plane}: cleared for takeoff on runway {result['runway_id']}"
+    return f"{plane}: cleared to land on runway {result['runway_id']}"
+
+
+def describe_forwarded(item):
+    """One line for something tower passed on to command."""
+    plane = item["aircraft_id"]
+    if item["type"] == AIRCRAFT_REMOVED:
+        return f"{plane}: told command it departed"
+    if item["type"] == AIRCRAFT_PARKED:
+        return f"{plane}: told command it parked"
+    return f"{plane}: position sent to command (altitude {item['altitude']})"
 
 
 def show_runways(conn):
