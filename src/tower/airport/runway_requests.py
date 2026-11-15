@@ -1,4 +1,4 @@
-# REQ-TOW-008, REQ-TOW-009, REQ-TOW-011
+# REQ-TOW-008, REQ-TOW-009, REQ-TOW-011, REQ-TOW-012
 
 import json
 
@@ -116,7 +116,10 @@ HANDLERS = {
 }
 
 
-def answer_requests(conn, airport_id, get=read_tower_inbox, send=send_to_radar):
+def answer_requests(conn, airport_id, get=read_tower_inbox, send=send_to_radar, tell_command=send_to_command):
+    """Answer each plane's newest runway message. Replies go to radar; a NO_RUNWAY also goes to command
+    (REQ-TOW-012), so it can show the plane is waiting. `get`, `send` and `tell_command` are for tests.
+    """
     results = []
 
     for aircraft_id, request in newest_per_plane(get()).items():
@@ -136,6 +139,8 @@ def answer_requests(conn, airport_id, get=read_tower_inbox, send=send_to_radar):
         if result is not None:
             if result.get("type") != FREED:
                 send(json.dumps(result))
+            if result.get("type") == NO_RUNWAY:
+                tell_command(json.dumps(result))  # the same reply radar got
             results.append(result)
 
         mark_processed(conn, msg_key)

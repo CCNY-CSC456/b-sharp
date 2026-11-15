@@ -1,8 +1,9 @@
-# REQ-TOW-008, REQ-TOW-009, REQ-TOW-011
+# REQ-TOW-008, REQ-TOW-009, REQ-TOW-011, REQ-TOW-012
 # __main__.py — answer radar's runway requests from the terminal.
 # Run from the repo root:
 #   python -m src.tower.airport answer-requests   (reads tower's inbox, assigns and frees runways, replies to radar,
-#                                                  and forwards plane positions to command)
+#                                                  forwards plane positions to command, and tells command
+#                                                  about every runway that changed)
 #   python -m src.tower.airport runways           (shows every runway in tower.db)
 # Python runs a file named __main__.py when you use "python -m" on its folder.
 
@@ -14,6 +15,7 @@ from src.tower.airport.runway_requests import (
     AIRCRAFT_LANDED, AIRCRAFT_PARKED, AIRCRAFT_REMOVED, FREED, NO_RUNWAY, PARKED, REQUEST_TAKEOFF,
     answer_requests, forward_positions,
 )
+from src.tower.airport.runway_status import send_runway_status
 
 # The airport tower runs. Same ID and numbers as Command's dashboard (src/command/airport.py).
 AIRPORT_ID = "DEMO-001"
@@ -31,12 +33,15 @@ def answer(conn):
     results = answer_requests(conn, AIRPORT_ID)
     # Second, so runways are already freed / assigned before command hears about them.
     forwarded = forward_positions(conn, AIRPORT_ID)
-    if not results and not forwarded:
+    runways = send_runway_status(conn, AIRPORT_ID)
+    if not results and not forwarded and not runways:
         print("Nothing new to answer.")
     for result in results:
         print(describe_result(result))
     for item in forwarded:
         print(describe_forwarded(item))
+    for status in runways:
+        print(describe_runway(status))
 
 
 def describe_result(result):
@@ -46,7 +51,7 @@ def describe_result(result):
         how = "parked" if result.get("reason") == PARKED else "departed"
         return f"{plane}: {how}, runway {result['runway_id']} freed"
     if result["type"] == NO_RUNWAY:
-        return f"{plane}: no runway available"
+        return f"{plane}: no runway available (told command)"
     if result["request"] == REQUEST_TAKEOFF:
         return f"{plane}: cleared for takeoff on runway {result['runway_id']}"
     return f"{plane}: cleared to land on runway {result['runway_id']}"
@@ -62,6 +67,14 @@ def describe_forwarded(item):
     if item["type"] == AIRCRAFT_LANDED:
         return f"{plane}: told command it landed"
     return f"{plane}: position sent to command (altitude {item['altitude']})"
+
+
+def describe_runway(status):
+    """One line for a runway change tower told command about."""
+    runway = f"Runway {status['runway_id']}"
+    if status["aircraft_id"] is None:
+        return f"{runway}: told command it is free"
+    return f"{runway}: told command {status['aircraft_id']} is {status['phase']}"
 
 
 def show_runways(conn):
