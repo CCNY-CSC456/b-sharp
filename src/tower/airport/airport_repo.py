@@ -66,17 +66,44 @@ def mark_processed(conn, msg_key):
     with conn:
         conn.execute(QUERIES.mark_message_processed, (msg_key,))
 
+# Allowed state transition edges for runway assignments
+VALID_TRANSITIONS = {
+  (None, "LANDING_ASSIGNED"),               # Initial landing assignment
+  (None, "TAKEOFF_ASSIGNED"),               # Initial takeoff assignment
+  (None, "PARKED"),                         # less sure about this one (?)
+  ("LANDING_ASSIGNED", "LANDING_ASSIGNED"), # Idempotent retry
+  ("LANDING_ASSIGNED", "LANDED"),           # Plane touches down
+  ("LANDED", "LANDED"),                     # Idempotent landing update
+  ("LANDED", "PARKED"),                     # semantically valid
+  ("LANDED", "TAKEOFF_ASSIGNED"),           # Plane requests takeoff after landing
+  ("PARKED", "TAKEOFF_ASSIGNED"),           # LANDED and PARKED are the two "grounded" states?
+  ("TAKEOFF_ASSIGNED", "TAKEOFF_ASSIGNED"), # Idempotent takeoff clearance retry
+}
+
+# validate whether a runway assignment state transition is permitted.
+def validate_runway_transition(current_status: str | None, new_status: str) -> bool:
+  return (current_status, new_status) in VALID_TRANSITIONS
+
 
 def assign_runway(conn, airport_id, aircraft_id, new_status="LANDING_ASSIGNED"):
     if conn.in_transaction:
         conn.commit()
 
     conn.execute("BEGIN IMMEDIATE") # NOTE we had (or have) a "Non-Atomic Check-Then-Act" which this MAYBE addresses
-    try:
-        row = conn.execute(QUERIES.get_assignment, (airport_id, aircraft_id)).fetchone()
+    try:       # basically same query v but with status, old one might be unused now
+        row = conn.execute(QUERIES.get_assignment_and_status, (airport_id, aircraft_id)).fetchone()
+        current_status = row[1] if row else None
+        if not validate_runway_transition(current_status, new_status):
+          conn.commit()     # there's still a potential problem here
+          raise ValueError( # but it (maybe) ensures at least the calls
+            f"Invalid FSM transition for aircraft '{aircraft_id}': "
+            f"cannot transition from '{current_status}' to '{new_status}'."
+          ) # to change the status have to happen in the correct sequence
+
         if row is not None:
             runway_id = row[0]
-            conn.execute(QUERIES.update_assignment_status, (new_status, airport_id, aircraft_id))
+            if current_status != new_status: # this one's since if it's an indempotent request, just no-op it
+                conn.execute(QUERIES.update_assignment_status, (new_status, airport_id, aircraft_id))
             conn.commit()
             return runway_id
 
