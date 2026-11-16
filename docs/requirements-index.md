@@ -19,3 +19,4 @@
 | REQ-RAD-016 | Radar | Send Aircraft Info to Tower | src/radar/airplane/runway_requests.py, src/radar/airplane/__main__.py | tests/radar/test_aircraft_info.py | |
 | REQ-TOW-009 | Tower | Forward Plane Positions to Command | src/tower/airport/runway_requests.py, src/tower/airport/__main__.py | tests/tower/test_forward_positions.py | |
 | REQ-TOW-012 | Tower | Runway Status and Refusals to Command | src/tower/airport/runway_status.py, src/tower/airport/runway_requests.py, src/tower/airport/__main__.py | tests/tower/test_runway_status.py | |
+| REQ-TOW-013 | Tower | Unsafe Separation | src/tower/airport/separation.py, src/tower/airport/airport_repo.py, src/tower/airport/__main__.py | tests/tower/test_separation.py | |

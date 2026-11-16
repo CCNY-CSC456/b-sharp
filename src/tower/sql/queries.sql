@@ -65,6 +65,34 @@ SELECT runway_id, aircraft_id, phase FROM runway_status_sent WHERE airport_id = 
 -- name: record_sent_runway_status
 INSERT OR REPLACE INTO runway_status_sent (airport_id, runway_id, aircraft_id, phase) VALUES (?, ?, ?, ?);
 
+-- name: clear_aircraft_positions
+DELETE FROM aircraft_positions WHERE airport_id = ?;
+
+-- name: insert_aircraft_position
+INSERT INTO aircraft_positions
+    (airport_id, aircraft_id, latitude, longitude, altitude, status, on_ground, requested_at, timestamp)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: get_aircraft_positions
+SELECT aircraft_id, latitude, longitude, altitude, status, on_ground, requested_at, timestamp
+FROM aircraft_positions WHERE airport_id = ? ORDER BY aircraft_id;
+
+-- name: get_separations
+SELECT separation_id, aircraft_id, other_aircraft_id, move_to_latitude, move_to_longitude, status, opened_at, resolved_at
+FROM separations WHERE airport_id = ? ORDER BY separation_id;
+
+-- name: insert_separation
+INSERT INTO separations (airport_id, aircraft_id, other_aircraft_id, move_to_latitude, move_to_longitude, status, opened_at)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- name: set_separation_move_to
+UPDATE separations SET move_to_latitude = ?, move_to_longitude = ?, status = 'OPEN'
+WHERE airport_id = ? AND separation_id = ? AND status = 'WAITING';
+
+-- name: close_separation
+UPDATE separations SET status = ?, resolved_at = ?
+WHERE airport_id = ? AND separation_id = ? AND status IN ('WAITING', 'OPEN');
+
 ----|                                 [END]                                 |-->
 
 
