@@ -66,22 +66,33 @@ def mark_processed(conn, msg_key):
     with conn:
         conn.execute(QUERIES.mark_message_processed, (msg_key,))
 
-def assign_runway(conn, airport_id, aircraft_id, new_status): #new_status="LANDING_ASSIGNED"
-    with conn:
+
+def assign_runway(conn, airport_id, aircraft_id, new_status="LANDING_ASSIGNED"):
+    if conn.in_transaction:
+        conn.commit()
+
+    conn.execute("BEGIN IMMEDIATE") # NOTE we had (or have) a "Non-Atomic Check-Then-Act" which this MAYBE addresses
+    try:
         row = conn.execute(QUERIES.get_assignment, (airport_id, aircraft_id)).fetchone()
         if row is not None:
             runway_id = row[0]
             conn.execute(QUERIES.update_assignment_status, (new_status, airport_id, aircraft_id))
+            conn.commit()
             return runway_id
 
         row = conn.execute(QUERIES.find_available_runway_joint, (airport_id,)).fetchone()
         if row is None:
+            conn.commit()
             return None
 
         runway_id = row[0]
         conn.execute(QUERIES.insert_runway_assignment, (airport_id, runway_id, aircraft_id, new_status, now()))
-
-    return runway_id
+        conn.commit()
+        return runway_id
+    except Exception:
+        if conn.in_transaction:
+            conn.rollback()
+        raise
 
 def free_runway(conn, airport_id, aircraft_id):
     with conn:

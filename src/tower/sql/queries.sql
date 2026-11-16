@@ -11,16 +11,16 @@ INSERT INTO airport VALUES (?, ?, ?, ?);
 INSERT INTO runways (airport_id, runway_id, status, timestamp) VALUES (?, ?, ?, ?);
 
 -- name: get_runway_by_aircraft
-SELECT runway_id FROM runways WHERE airport_id = ? AND aircraft_id = ?;
+SELECT runway_id FROM runways WHERE airport_id = ? AND aircraft_id = ?; -- TODO vestigial
 
 -- name: find_available_runway
-SELECT runway_id FROM runways WHERE airport_id = ? AND status = 'Available' ORDER BY runway_id LIMIT 1;
+SELECT runway_id FROM runways WHERE airport_id = ? AND status = 'Available' ORDER BY runway_id LIMIT 1; -- TODO vestigial
 
 -- name: lock_runway
-UPDATE runways SET status = 'Not Available', aircraft_id = ?, timestamp = ? WHERE airport_id = ? AND runway_id = ? AND status = 'Available';
+UPDATE runways SET status = 'Not Available', aircraft_id = ?, timestamp = ? WHERE airport_id = ? AND runway_id = ? AND status = 'Available'; -- TODO vestigial
 
 -- name: free_runway_record
-UPDATE runways SET status = 'Available', aircraft_id = NULL, timestamp = ? WHERE airport_id = ? AND runway_id = ?;
+UPDATE runways SET status = 'Available', aircraft_id = NULL, timestamp = ? WHERE airport_id = ? AND runway_id = ?; -- TODO vestigial
 
 -- name: find_available_runway_joint
 SELECT r.runway_id

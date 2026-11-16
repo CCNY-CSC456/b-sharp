@@ -18,14 +18,15 @@ CREATE TABLE IF NOT EXISTS processed_messages (
     message_id TEXT PRIMARY KEY
 );
 
--- Dynamic assignments (1:1 constraint between runway and aircraft)
+-- Dynamic assignments (1:1 per-airport constraint between runway and aircraft)
 CREATE TABLE IF NOT EXISTS runway_assignments (
     airport_id TEXT NOT NULL,
-    runway_id INTEGER NOT NULL UNIQUE,
-    aircraft_id TEXT NOT NULL UNIQUE,
+    runway_id INTEGER NOT NULL,
+    aircraft_id TEXT NOT NULL,
     status TEXT CHECK(status IN ('LANDING_ASSIGNED', 'LANDED', 'TAKEOFF_ASSIGNED')),
     assigned_at TEXT NOT NULL,
-    PRIMARY KEY (airport_id, runway_id)
+    PRIMARY KEY (airport_id, runway_id),
+    UNIQUE (airport_id, aircraft_id) -- having them be indivudally unique prevented multiple airports from existing
 );
 
 -- REQ-TOW-012: what tower last told command about each runway, so only changes are sent.
