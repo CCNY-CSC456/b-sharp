@@ -189,7 +189,8 @@ def main():
     # sys.argv is what was typed after "python -m src.radar.airplane".
     command = sys.argv[1] if len(sys.argv) > 1 else ""
     commands = ("create", "list", "set-altitude", "send-info", "request-landing", "request-takeoff",
-                "check-replies", "fake-tower-reply", "report-landed", "report-departed")
+                "check-replies", "fake-tower-reply", "report-landed", "report-departed",
+                "check-separation", "report-conflict")
     if command not in commands:
         for number, name in enumerate(commands):
             start = "Usage:" if number == 0 else "      "
@@ -215,6 +216,10 @@ def main():
             report(conn, report_landed, "has landed")
         elif command == "report-departed":
             report(conn, report_departed, "has departed")
+        elif command == "check-separation":
+            check_separation(conn)
+        elif command == "report-conflict":
+            report_conflict(conn)
         else:
             fake_reply(conn)
     except (KeyboardInterrupt, EOFError):  # Ctrl+C or Ctrl+D while it's asking
