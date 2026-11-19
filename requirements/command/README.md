@@ -118,6 +118,6 @@ run Tower's request processor or advance the simulation.
 
 ## R2 alerts (REQ-OPS-007)
 
-The dashboard includes Tower alerts, severity-ranked aircraft highlighting, View Aircraft, Contact Tower, and configurable sound throttling. See [the demo walkthrough](../../docs/command-r2-demo.md)
-for startup, supported message formats, sound settings, and an isolated rehearsal. Existing R1 database
+The dashboard includes Tower alerts, severity-ranked aircraft highlighting, View Aircraft, Contact Tower, and configurable sound throttling. See [dashboard startup](../../README.md#open-the-command-dashboard) for Windows/Mac commands
+and [REQ-OPS-007](REQ-OPS-007.md) for the alert message contract and sound settings. Existing R1 database
 access is retained for this demo; the relay-only migration and latency enforcement are deferred.
