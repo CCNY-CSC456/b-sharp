@@ -25,7 +25,7 @@ import json
 from src.tower.messaging.query_fetch import load_queries, load_schema
 
 TIME_FORMAT  = "%Y-%m-%dT%H:%M:%S"
-RUNWAY_COUNT = 10
+RUNWAY_COUNT = 20
 
 
 QUERIES     = load_queries("queries.sql")
@@ -284,3 +284,35 @@ def resolve_conflict(conn, airport_id, conflict_id):
         cursor = conn.execute(QUERIES.resolve_conflict, (now(), airport_id, conflict_id))
     return cursor.rowcount == 1
 
+
+
+# bro we need to be able to change runways oh snap
+def set_runway_count(conn, airport_id, runway_count):
+    """Demo helper: update airport.runway_count and sync/trim runways in one transaction.
+
+    Returns the resulting runway count in `runways` for `airport_id`, or None if the
+    airport does not exist.
+    """
+    if isinstance(runway_count, bool) or not isinstance(runway_count, int) or runway_count <= 0:
+        raise ValueError(f"runway_count must be a positive integer, got {runway_count!r}")
+
+    if conn.in_transaction:
+        conn.commit()
+
+    timestamp = now()
+    with conn:
+        cur = conn.execute(QUERIES.update_airport_runway_count, (runway_count, airport_id))
+        if cur.rowcount == 0:
+            return None
+
+        conn.execute(
+            QUERIES.sync_runways_up,
+            (airport_id, airport_id, timestamp),
+        )
+        conn.execute(
+            QUERIES.trim_excess_runways,
+            (airport_id, airport_id),
+        )
+
+    row = conn.execute(QUERIES.last_runway_resync, (airport_id,), ).fetchone()
+    return row[0] if row else 0

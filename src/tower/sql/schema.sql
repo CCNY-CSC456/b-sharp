@@ -2,7 +2,8 @@ CREATE TABLE IF NOT EXISTS airport (
     airport_id TEXT PRIMARY KEY,
     perimeter REAL,
     latitude REAL,
-    longitude REAL
+    longitude REAL,
+    runway_count INTEGER NOT NULL DEFAULT 10 CHECK (runway_count > 0)
 );
 
 -- The airport's runways (10, created with the airport). Who is ON a runway lives in runway_assignments.
