@@ -95,3 +95,25 @@ CREATE TABLE IF NOT EXISTS ACTIVE (
     timestamp TEXT,
     runway_id TEXT
 );
+
+
+-- unverified
+CREATE TABLE IF NOT EXISTS runway_request_queue (
+    queue_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    airport_id TEXT NOT NULL,
+    aircraft_id TEXT NOT NULL,
+    req_type TEXT NOT NULL CHECK(req_type IN ('REQUEST_LANDING', 'REQUEST_TAKEOFF')),
+    req_timestamp TEXT,
+    msg_key TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (airport_id, aircraft_id)
+);
+
+CREATE TABLE IF NOT EXISTS runway_response_queue (
+    response_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    airport_id TEXT NOT NULL,
+    target TEXT NOT NULL CHECK(target IN ('radar', 'command')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);

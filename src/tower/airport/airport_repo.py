@@ -21,7 +21,7 @@ import sqlite3
 from functools import cache
 from pathlib import Path
 from datetime import datetime
-
+import json
 
 from src.tower.messaging.query_fetch import load_queries, load_schema
 
@@ -66,6 +66,7 @@ def mark_processed(conn, msg_key):
     with conn:
         conn.execute(QUERIES.mark_message_processed, (msg_key,))
 
+
 # Allowed state transition edges for runway assignments
 VALID_TRANSITIONS = {
   (None, "LANDING_ASSIGNED"),               # Initial landing assignment
@@ -75,10 +76,14 @@ VALID_TRANSITIONS = {
   ("LANDING_ASSIGNED", "LANDED"),           # Plane touches down
   ("LANDED", "LANDED"),                     # Idempotent landing update
   ("LANDED", "PARKED"),                     # semantically valid
+  ("PARKED", "PARKED"),                     # another indemponent self edge
   ("LANDED", "TAKEOFF_ASSIGNED"),           # Plane requests takeoff after landing
   ("PARKED", "TAKEOFF_ASSIGNED"),           # LANDED and PARKED are the two "grounded" states?
   ("TAKEOFF_ASSIGNED", "TAKEOFF_ASSIGNED"), # Idempotent takeoff clearance retry
-}
+} # this might (or probably) will be moved to a "constants" file with other similar & enums
+# NOTE maybe we could handle the indempotent cases by just checking whether
+# something is a self edge, but that loses out on the explicit correctness
+# and ease of auditing, so let's not do that
 
 # validate whether a runway assignment state transition is permitted.
 def validate_runway_transition(current_status: str | None, new_status: str) -> bool:
@@ -198,3 +203,59 @@ def close_separation(conn, airport_id, separation_id, status):
     with conn:
         cursor = conn.execute(QUERIES.close_separation, (status, now(), airport_id, separation_id))
     return cursor.rowcount == 1
+
+
+# unverified
+
+def get_request_queue(conn, airport_id):
+    columns = ("queue_id", "aircraft_id", "req_type", "req_timestamp", "msg_key", "position", "created_at")
+    rows = conn.execute(QUERIES.get_request_queue, (airport_id,))
+    return [dict(zip(columns, row)) for row in rows]
+
+
+def save_request_queue(conn, airport_id, items):
+    """Persist ordered queue entries `(aircraft_id, req_type, req_timestamp, msg_key)` for `airport_id`."""
+    ts = now()
+    with conn:
+        conn.execute(QUERIES.replace_request_queue, (airport_id,))
+        conn.executemany(
+            QUERIES.insert_request_queue,
+            [
+                (airport_id, item["aircraft_id"], item["req_type"], item.get("req_timestamp"), item["msg_key"], idx, ts)
+                for idx, item in enumerate(items)
+            ],
+        )
+
+
+def remove_queued_request(conn, airport_id, aircraft_id):
+    with conn:
+        conn.execute(QUERIES.delete_request_queue_by_aircraft, (airport_id, aircraft_id))
+
+
+def enqueue_response(conn, airport_id, target, payload):
+    with conn:
+        cursor = conn.execute(
+            QUERIES.insert_response_queue,
+            (airport_id, target, json.dumps(payload), now()),
+        )
+    return cursor.lastrowid
+
+
+def get_response_queue(conn, airport_id):
+    columns = ("response_id", "target", "payload_json", "created_at")
+    rows = conn.execute(QUERIES.get_response_queue, (airport_id,))
+    return [
+        {
+            "response_id": row[0],
+            "target": row[1],
+            "payload": json.loads(row[2]),
+            "created_at": row[3],
+        }
+        for row in rows
+    ]
+
+
+def remove_queued_response(conn, airport_id, response_id):
+    with conn:
+        conn.execute(QUERIES.delete_response_queue_item, (response_id, airport_id))
+
