@@ -4,6 +4,7 @@
 #   python -m src.radar.airplane create    (asks for each detail, saves it, sends it to tower)
 #   python -m src.radar.airplane list      (shows every airplane in radar.db)
 #   python -m src.radar.airplane set-altitude       (changes a plane's altitude and tells tower, REQ-RAD-015)
+#   python -m src.radar.airplane set-position       (moves a plane by hand and tells tower, REQ-RAD-020)
 #   python -m src.radar.airplane send-info          (sends one plane's current data to tower, REQ-RAD-016)
 #   python -m src.radar.airplane request-landing    (asks tower for a runway to land)
 #   python -m src.radar.airplane request-takeoff    (asks tower for a runway to take off)
@@ -11,16 +12,28 @@
 #   python -m src.radar.airplane fake-tower-reply   (TESTING: pretend to be tower and answer radar)
 #   python -m src.radar.airplane report-landed      (tells tower the plane landed, REQ-RAD-014)
 #   python -m src.radar.airplane report-departed    (tells tower the plane left, REQ-RAD-014)
+#   python -m src.radar.airplane report-parked      (tells tower a landed plane parked, frees its runway, REQ-RAD-019)
+#   python -m src.radar.airplane run                (R2 loop, every 1s: unsafe separation, conflicts, 30s runway wait)
+#   python -m src.radar.airplane run --once         (one pass of the loop, then stop)
+#   python -m src.radar.airplane report-conflict    (plane is late +2h / +4h or low on gas; run sends it every 1s)
+#   python -m src.radar.airplane conflicts          (shows every conflict and whether tower resolved it)
+#   python -m src.radar.airplane fake-unsafe-separation  (TESTING: pretend tower told radar to move a plane)
+#   python -m src.radar.airplane fake-conflict-resolved  (TESTING: pretend tower resolved a conflict)
 # Python runs a file named __main__.py when you use "python -m" on its folder.
 
 import sys
 
-from src.radar.airplane.aircraft_repo import get_aircraft, init_db, update_altitude
+from src.radar.airplane.aircraft_repo import get_aircraft, init_db, update_altitude, update_position
 from src.radar.airplane.create_airplane import create_airplane
 from src.radar.airplane.runway_requests import (
-    check_tower_replies, fake_tower_reply, report_departed, report_landed, request_landing, request_takeoff,
-    send_aircraft_info,
+    check_tower_replies, fake_tower_reply, report_departed, report_landed, report_parked, request_landing,
+    request_takeoff, send_aircraft_info,
 )
+from src.radar.airplane.conflicts import (
+    CONFLICT_REASONS, fake_conflict_resolved, get_conflict, get_conflicts, open_conflict,
+)
+from src.radar.airplane.monitor import run
+from src.radar.airplane.separation import fake_unsafe_separation
 
 from src.tower.messaging.query_fetch import load_queries
 QUERIES     = load_queries("queries.sql")
@@ -83,6 +96,20 @@ def set_altitude(conn):
     print(f"\nSet {aircraft_id} altitude to {altitude} feet and sent the update to tower.")
 
 
+def set_position(conn):
+    """Move a plane by hand (REQ-RAD-020), then send tower its updated data (REQ-RAD-016)."""
+    aircraft_id = ask_text("Aircraft ID")
+    latitude = ask_number("New latitude")
+    longitude = ask_number("New longitude")
+    try:
+        update_position(conn, aircraft_id, latitude, longitude)
+    except ValueError as error:  # e.g. no plane with that ID, or off the globe
+        print(f"\nNot changed: {error}")
+        return
+    send_aircraft_info(conn, aircraft_id)
+    print(f"\nMoved {aircraft_id} to ({latitude}, {longitude}) and sent the update to tower.")
+
+
 def send_info(conn):
     """Send tower one plane's current data and show what was sent (REQ-RAD-016)."""
     aircraft_id = ask_text("Aircraft ID")
@@ -143,6 +170,76 @@ def fake_reply(conn):
     print(f"\nTower replied: {answer} for {aircraft_id} (test reply). Run check-replies to read it.")
 
 
+# --- R2 (REQ-RAD-017, REQ-RAD-018, REQ-RAD-019) ---
+
+def ask_reason():
+    """Keep asking until the answer is a reason's number or name, e.g. "3" or "low_fuel"."""
+    reasons = list(CONFLICT_REASONS)
+    for number, reason in enumerate(reasons, start=1):
+        print(f"  {number}. {reason:<9} (plane {CONFLICT_REASONS[reason]})")
+    while True:
+        answer = input("Reason (number or name): ").strip().upper()
+        if answer.isdigit() and 1 <= int(answer) <= len(reasons):
+            return reasons[int(answer) - 1]
+        if answer in reasons:
+            return answer
+        print(f"  Please type 1-{len(reasons)} or one of: {', '.join(reasons)}")
+
+
+def report_conflict(conn):
+    """Open a conflict. It is sent to tower every second by `run` until tower resolves it (REQ-RAD-018)."""
+    aircraft_id = ask_text("Aircraft ID")
+    reason = ask_reason()
+    try:
+        conflict = open_conflict(conn, aircraft_id, reason)
+    except ValueError as error:  # e.g. no plane with that ID, or that reason is already open
+        print(f"\nNot opened: {error}")
+        return
+    print(f"\nConflict {reason} opened for {aircraft_id} (id {conflict['conflict_id']}).")
+    print("`python -m src.radar.airplane run` sends it to tower every second until tower resolves it.")
+
+
+def show_conflicts(conn):
+    """Print every conflict, newest last."""
+    conflicts = get_conflicts(conn)
+    if not conflicts:
+        print("\nNo conflicts in radar.db yet.")
+        return
+    print(f"\n{'Aircraft':<10}{'Reason':<10}{'Status':<10}{'Opened':<21}{'Resolved':<21}ID")
+    print("-" * 100)
+    for c in conflicts:
+        print(f"{c['aircraft_id']:<10}{c['reason']:<10}{c['status']:<10}{c['opened_at']:<21}"
+              f"{c['resolved_at'] or '-':<21}{c['conflict_id']}")
+
+
+def fake_separation(conn):
+    """TESTING ONLY: send radar an UNSAFE_SEPARATION as if tower sent it."""
+    aircraft_id = ask_text("Aircraft ID")
+    if get_aircraft(conn, aircraft_id) is None:
+        print(f"\nNot sent: radar has no aircraft {aircraft_id}")
+        return
+    latitude = ask_number("Move to latitude")
+    longitude = ask_number("Move to longitude")
+    fake_unsafe_separation(aircraft_id, latitude, longitude)
+    print(f"\nTower told radar to move {aircraft_id} to ({latitude}, {longitude}) (test message). "
+          "Run `run --once` to handle it.")
+
+
+def fake_resolve(conn):
+    """TESTING ONLY: send radar a CONFLICT_RESOLVED as if tower sent it."""
+    open_ids = [c["conflict_id"] for c in get_conflicts(conn, "OPEN")]
+    if not open_ids:
+        print("\nNo open conflicts to resolve.")
+        return
+    print("Open conflicts: " + ", ".join(open_ids))
+    conflict = get_conflict(conn, ask_text("Conflict ID"))
+    if conflict is None or conflict["status"] != "OPEN":
+        print("\nNot sent: no open conflict with that ID")
+        return
+    fake_conflict_resolved(conflict)
+    print(f"\nTower resolved {conflict['conflict_id']} (test message). Run `run --once` to handle it.")
+
+
 def show_aircraft(conn):
     """Print every airplane in radar.db as a table with lined-up columns."""
     rows = conn.execute( QUERIES.RDR_B_06 ).fetchall()
@@ -161,8 +258,9 @@ def show_aircraft(conn):
 def main():
     # sys.argv is what was typed after "python -m src.radar.airplane".
     command = sys.argv[1] if len(sys.argv) > 1 else ""
-    commands = ("create", "list", "set-altitude", "send-info", "request-landing", "request-takeoff",
-                "check-replies", "fake-tower-reply", "report-landed", "report-departed")
+    commands = ("create", "list", "set-altitude", "set-position", "send-info", "request-landing", "request-takeoff",
+                "check-replies", "fake-tower-reply", "report-landed", "report-departed", "report-parked",
+                "run", "report-conflict", "conflicts", "fake-unsafe-separation", "fake-conflict-resolved")
     if command not in commands:
         for number, name in enumerate(commands):
             start = "Usage:" if number == 0 else "      "
@@ -176,6 +274,8 @@ def main():
             show_aircraft(conn)
         elif command == "set-altitude":
             set_altitude(conn)
+        elif command == "set-position":
+            set_position(conn)
         elif command == "send-info":
             send_info(conn)
         elif command == "request-landing":
@@ -188,6 +288,18 @@ def main():
             report(conn, report_landed, "has landed")
         elif command == "report-departed":
             report(conn, report_departed, "has departed")
+        elif command == "report-parked":
+            report(conn, report_parked, "has parked")
+        elif command == "run":
+            run(conn, ticks=1 if "--once" in sys.argv[2:] else None)
+        elif command == "report-conflict":
+            report_conflict(conn)
+        elif command == "conflicts":
+            show_conflicts(conn)
+        elif command == "fake-unsafe-separation":
+            fake_separation(conn)
+        elif command == "fake-conflict-resolved":
+            fake_resolve(conn)
         else:
             fake_reply(conn)
     except (KeyboardInterrupt, EOFError):  # Ctrl+C or Ctrl+D while it's asking
