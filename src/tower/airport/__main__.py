@@ -1,23 +1,26 @@
 # REQ-TOW-008, REQ-TOW-009, REQ-TOW-011, REQ-TOW-012, REQ-TOW-013
-# __main__.py — answer radar's runway requests from the terminal.
+# main.py — answer radar's runway requests from the terminal.
 # Run from the repo root:
-#   python -m src.tower.airport answer-requests   (reads tower's inbox, assigns and frees runways, replies to radar,
-#                                                  forwards plane positions to command, and tells command
-#                                                  about every runway that changed and every plane that is
-#                                                  too close to another)
+#   python -m src.tower.airport answer-requests   (runs TowerScheduler with SQLite-backed priority
+#                                                  and response queues, separation checks, and forwarding)
 #   python -m src.tower.airport runways           (shows every runway in tower.db)
-# Python runs a file named __main__.py when you use "python -m" on its folder.
 
 import sqlite3
 import sys
 
 from src.tower.airport.airport_repo import create_airport, create_tables
 from src.tower.airport.runway_requests import (
-    AIRCRAFT_LANDED, AIRCRAFT_PARKED, AIRCRAFT_REMOVED, FREED, NO_RUNWAY, PARKED, REQUEST_REFUSED, REQUEST_TAKEOFF,
-    answer_requests, forward_positions,
+    AIRCRAFT_LANDED,
+    AIRCRAFT_PARKED,
+    AIRCRAFT_REMOVED,
+    FREED,
+    NO_RUNWAY,
+    PARKED,
+    REQUEST_TAKEOFF,
 )
 from src.tower.airport.runway_status import send_runway_status
-from src.tower.airport.separation import CANCELLED, OPEN, RESOLVED, check_separation
+from src.tower.airport.scheduler import TowerScheduler
+from src.tower.airport.separation import CANCELLED, OPEN, RESOLVED
 
 # The airport tower runs. Same ID and numbers as Command's dashboard (src/command/airport.py).
 AIRPORT_ID = "DEMO-001"
@@ -32,21 +35,31 @@ def open_airport():
 
 
 def answer(conn):
-    results = answer_requests(conn, AIRPORT_ID)
-    # Second, so runways are already freed / assigned before command hears about them.
-    forwarded = forward_positions(conn, AIRPORT_ID)
-    separations = check_separation(conn, AIRPORT_ID)
+    scheduler = TowerScheduler(conn, AIRPORT_ID)
+    summary = scheduler.run_cycle()
     runways = send_runway_status(conn, AIRPORT_ID)
-    if not results and not forwarded and not separations and not runways:
+
+    if (
+        not summary.request_replies
+        and not summary.forwarded_messages
+        and not summary.separation_changes
+        and not runways
+    ):
         print("Nothing new to answer.")
-    for result in results:
+
+    for result in summary.request_replies:
         print(describe_result(result))
-    for item in forwarded:
+    for item in summary.forwarded_messages:
         print(describe_forwarded(item))
-    for event in separations:
+    for event in summary.separation_changes:
         print(describe_separation(event))
     for status in runways:
         print(describe_runway(status))
+
+    if summary.queued_requests:
+        print(f"Queued runway requests: {', '.join(summary.queued_requests)}")
+    if summary.queued_responses:
+        print(f"Pending queued responses: {len(summary.queued_responses)}")
 
 
 def describe_result(result):
@@ -55,8 +68,6 @@ def describe_result(result):
     if result["type"] == FREED:
         how = "parked" if result.get("reason") == PARKED else "departed"
         return f"{plane}: {how}, runway {result['runway_id']} freed"
-    if result["type"] == REQUEST_REFUSED:
-        return f"{plane}: {result['request']} refused, it is {result['phase']} (told radar)"
     if result["type"] == NO_RUNWAY:
         return f"{plane}: no runway available (told command)"
     if result["request"] == REQUEST_TAKEOFF:
@@ -109,7 +120,6 @@ def show_runways(conn):
 
 
 def main():
-    # sys.argv is what was typed after "python -m src.tower.airport".
     command = sys.argv[1] if len(sys.argv) > 1 else ""
     if command not in ("answer-requests", "runways"):
         print("Usage: python -m src.tower.airport answer-requests")
@@ -122,7 +132,7 @@ def main():
         else:
             show_runways(conn)
     finally:
-        conn.close()  # always close the database, even if something went wrong
+        conn.close()
 
 
 if __name__ == "__main__":
