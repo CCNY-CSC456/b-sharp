@@ -115,3 +115,9 @@ whether an aircraft departed, is parked, or was refused a runway. A separate Tow
 contract is needed to display no-runway results. Geographic positions come from
 Radar and remain separate from the runway schematic. Command polls the databases; it does not
 run Tower's request processor or advance the simulation.
+
+## R2 alerts (REQ-OPS-007)
+
+The dashboard includes Tower alerts, severity-ranked aircraft highlighting, View Aircraft, Contact Tower, and configurable sound throttling. See [the demo walkthrough](../../docs/command-r2-demo.md)
+for startup, supported message formats, sound settings, and an isolated rehearsal. Existing R1 database
+access is retained for this demo; the relay-only migration and latency enforcement are deferred.
