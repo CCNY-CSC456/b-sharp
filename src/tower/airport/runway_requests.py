@@ -4,7 +4,8 @@ import json
 
 from src.tower.messaging.db import init_db as init_messages_db, save_message, get_messages
 from src.tower.airport.airport_repo import (
-    assign_runway, free_runway, get_assigned_runway, mark_processed, is_processed, set_assignment_status,
+    InvalidRunwayTransition, assign_runway, free_runway, get_assigned_runway, mark_processed, is_processed,
+    set_assignment_status,
 )
 
 REQUEST_LANDING = "REQUEST_LANDING"
@@ -14,6 +15,7 @@ DEPARTED        = "DEPARTED"
 PARKED          = "PARKED"           # radar -> tower: the plane has parked, so it's off its runway
 RUNWAY_ASSIGNED = "RUNWAY_ASSIGNED"
 NO_RUNWAY       = "NO_RUNWAY"
+REQUEST_REFUSED = "REQUEST_REFUSED"  # tower -> radar: the request doesn't fit the plane's phase (REQ-TOW-011)
 FREED           = "FREED"
 
 # REQ-TOW-009: plane positions, radar -> tower -> command.
@@ -95,7 +97,16 @@ def process_parked(conn, airport_id, aircraft_id, request):
 def process_clearance(conn, airport_id, aircraft_id, request):
     req_type = request["type"]
     phase = TAKEOFF_ASSIGNED if req_type == REQUEST_TAKEOFF else LANDING_ASSIGNED
-    runway_id = assign_runway(conn, airport_id, aircraft_id, phase)
+    try:
+        runway_id = assign_runway(conn, airport_id, aircraft_id, phase)
+    except InvalidRunwayTransition as refused:
+        # e.g. REQUEST_TAKEOFF while still LANDING_ASSIGNED (it hasn't landed). Nothing changes; radar is told why,
+        # and the message is still marked handled, so it can't stop tower answering everyone else.
+        reply = {"type": REQUEST_REFUSED, "aircraft_id": aircraft_id, "phase": refused.current_status,
+                 "reason": f"{aircraft_id} is {refused.current_status}, so it can't get {phase}"}
+        reply["request"] = req_type
+        reply["request_timestamp"] = request.get("timestamp")
+        return reply
 
     if runway_id is None:
         reply = {"type": NO_RUNWAY, "aircraft_id": aircraft_id}

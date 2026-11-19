@@ -13,7 +13,7 @@ import sys
 
 from src.tower.airport.airport_repo import create_airport, create_tables
 from src.tower.airport.runway_requests import (
-    AIRCRAFT_LANDED, AIRCRAFT_PARKED, AIRCRAFT_REMOVED, FREED, NO_RUNWAY, PARKED, REQUEST_TAKEOFF,
+    AIRCRAFT_LANDED, AIRCRAFT_PARKED, AIRCRAFT_REMOVED, FREED, NO_RUNWAY, PARKED, REQUEST_REFUSED, REQUEST_TAKEOFF,
     answer_requests, forward_positions,
 )
 from src.tower.airport.runway_status import send_runway_status
@@ -55,6 +55,8 @@ def describe_result(result):
     if result["type"] == FREED:
         how = "parked" if result.get("reason") == PARKED else "departed"
         return f"{plane}: {how}, runway {result['runway_id']} freed"
+    if result["type"] == REQUEST_REFUSED:
+        return f"{plane}: {result['request']} refused, it is {result['phase']} (told radar)"
     if result["type"] == NO_RUNWAY:
         return f"{plane}: no runway available (told command)"
     if result["request"] == REQUEST_TAKEOFF:

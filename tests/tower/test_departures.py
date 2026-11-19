@@ -10,9 +10,10 @@ import sqlite3
 import pytest
 
 from src.tower.airport import __main__ as cli
-from src.tower.airport.airport_repo import create_airport, create_tables
+from src.tower.airport.airport_repo import VALID_TRANSITIONS, create_airport, create_tables
 from src.tower.airport.runway_requests import (
-    DEPARTED, FREED, LANDED, NO_RUNWAY, PARKED, REQUEST_LANDING, REQUEST_TAKEOFF, RUNWAY_ASSIGNED, answer_requests,
+    DEPARTED, FREED, LANDED, NO_RUNWAY, PARKED, REQUEST_LANDING, REQUEST_REFUSED, REQUEST_TAKEOFF, RUNWAY_ASSIGNED,
+    answer_requests,
 )
 from src.tower.messaging import db as tower_db
 
@@ -161,45 +162,22 @@ def test_radar_reads_the_takeoff_clearance():
     assert read_reply(message)["request"] == REQUEST_TAKEOFF
 
 
-# def test_command_output(tmp_path, monkeypatch, capsys):
-#     monkeypatch.chdir(tmp_path)  # tower.db gets created here, not in the repo
-#     monkeypatch.setattr("sys.argv", ["python -m src.tower.airport", "answer-requests"])
-#     radar_sends(REQUEST_LANDING, "A1", "2026-10-21T10:00:00")
-#     cli.main()
-#     assert "A1: cleared to land on runway 1" in capsys.readouterr().out
-#     radar_sends(REQUEST_TAKEOFF, "A1", "2026-10-21T10:10:00")
-#     cli.main()
-#     assert "A1: cleared for takeoff on runway 1" in capsys.readouterr().out
-#     radar_sends(DEPARTED, "A1", "2026-10-21T10:20:00")
-#     cli.main()
-#     assert "A1: departed, runway 1 freed" in capsys.readouterr().out
-#     cli.main()
-#     assert "Nothing new to answer." in capsys.readouterr().out
-
-def test_command_output(tmp_path, monkeypatch, capsys): # HACK not really the same
+def test_command_output(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)  # tower.db gets created here, not in the repo
     monkeypatch.setattr("sys.argv", ["python -m src.tower.airport", "answer-requests"])
     radar_sends(REQUEST_LANDING, "A1", "2026-10-21T10:00:00")
     cli.main()
     assert "A1: cleared to land on runway 1" in capsys.readouterr().out
-
-    #radar_sends(LANDED, "A1", "2026-10-21T10:10:00")
-    #answer_requests(conn, "JFK")
-
-    # stupid cli; anyway, this test isn't quite the same semantically, even
-    # though this test clearly comes from a point when landed was a defined state
-    # since it says "test command output" this might even just be about
-    # exercising the CLI and not the takeoff / landing logic
-
-    radar_sends(REQUEST_TAKEOFF, "A2", "2026-10-21T10:10:00")
+    radar_sends(LANDED, "A1", "2026-10-21T10:05:00")
     cli.main()
-    assert "A2: cleared for takeoff on runway 2" in capsys.readouterr().out
-    radar_sends(DEPARTED, "A2", "2026-10-21T10:20:00")
+    radar_sends(REQUEST_TAKEOFF, "A1", "2026-10-21T10:10:00")
     cli.main()
-    assert "A2: departed, runway 2 freed" in capsys.readouterr().out
+    assert "A1: cleared for takeoff on runway 1" in capsys.readouterr().out
+    radar_sends(DEPARTED, "A1", "2026-10-21T10:20:00")
+    cli.main()
+    assert "A1: departed, runway 1 freed" in capsys.readouterr().out
     cli.main()
     assert "Nothing new to answer." in capsys.readouterr().out
-
 
 
 # --- PARKED frees the runway ---
@@ -302,3 +280,74 @@ def test_landed_without_a_runway_does_nothing():
     radar_sends(LANDED, "A1", "2026-11-15T10:05:00")
     assert answer_requests(conn, "JFK") == []
     assert phase(conn, "A1") is None
+
+
+# --- requests that don't fit the plane's phase are refused, and never stop tower ---
+
+def test_every_allowed_phase_is_a_real_phase():
+    # runway_assignments only allows these (PARKED / DEPARTED free the runway instead).
+    real = {None, "LANDING_ASSIGNED", "LANDED", "TAKEOFF_ASSIGNED"}
+    assert all(old in real and new in real for old, new in VALID_TRANSITIONS)
+
+
+def test_takeoff_before_landing_is_refused_and_tower_keeps_going():
+    conn = new_airport()
+    radar_sends(REQUEST_LANDING, "A1", "2026-11-17T10:00:00")
+    answer_requests(conn, "JFK")
+    radar_sends(REQUEST_TAKEOFF, "A1", "2026-11-17T10:05:00")  # A1 hasn't reported LANDED
+    radar_sends(REQUEST_LANDING, "B2", "2026-11-17T10:05:00")
+    answer_requests(conn, "JFK")  # used to raise ValueError and stop every run after it
+    replies = {(r["aircraft_id"], r["type"]): r for r in radar_inbox()}
+    assert replies[("A1", REQUEST_REFUSED)] == {
+        "type": REQUEST_REFUSED, "aircraft_id": "A1", "phase": "LANDING_ASSIGNED",
+        "reason": "A1 is LANDING_ASSIGNED, so it can't get TAKEOFF_ASSIGNED",
+        "request": REQUEST_TAKEOFF, "request_timestamp": "2026-11-17T10:05:00"}
+    assert replies[("B2", RUNWAY_ASSIGNED)]["runway_id"] == 2  # the other plane is still answered
+    assert phase(conn, "A1") == "LANDING_ASSIGNED"             # nothing changed for A1
+    assert answer_requests(conn, "JFK") == []                  # handled once, not again every run
+
+
+def test_refused_is_only_told_to_radar():
+    conn = new_airport()
+    radar_sends(REQUEST_LANDING, "A1", "2026-11-17T10:00:00")
+    answer_requests(conn, "JFK")
+    radar_sends(REQUEST_TAKEOFF, "A1", "2026-11-17T10:05:00")
+    answer_requests(conn, "JFK")
+    to_command = [json.loads(m["content"]) for m in tower_db.get_messages("command")]
+    assert not any(m["type"] in (REQUEST_REFUSED, NO_RUNWAY) for m in to_command)  # no false "waiting" alert
+
+
+def test_landing_again_after_landed_is_refused():
+    conn = new_airport()
+    radar_sends(REQUEST_LANDING, "A1", "2026-11-17T10:00:00")
+    answer_requests(conn, "JFK")
+    radar_sends(LANDED, "A1", "2026-11-17T10:05:00")
+    answer_requests(conn, "JFK")
+    radar_sends(REQUEST_LANDING, "A1", "2026-11-17T10:06:00")
+    [reply] = answer_requests(conn, "JFK")
+    assert reply["type"] == REQUEST_REFUSED and reply["phase"] == "LANDED"
+    assert phase(conn, "A1") == "LANDED"
+
+
+def test_refused_plane_can_carry_on_normally():
+    conn = new_airport()
+    radar_sends(REQUEST_LANDING, "A1", "2026-11-17T10:00:00")
+    answer_requests(conn, "JFK")
+    radar_sends(REQUEST_TAKEOFF, "A1", "2026-11-17T10:05:00")
+    answer_requests(conn, "JFK")  # refused
+    radar_sends(LANDED, "A1", "2026-11-17T10:06:00")
+    answer_requests(conn, "JFK")
+    radar_sends(REQUEST_TAKEOFF, "A1", "2026-11-17T10:10:00")
+    [reply] = answer_requests(conn, "JFK")
+    assert (reply["type"], reply["runway_id"]) == (RUNWAY_ASSIGNED, 1)
+    assert phase(conn, "A1") == "TAKEOFF_ASSIGNED"
+
+
+def test_refused_command_output(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.argv", ["python -m src.tower.airport", "answer-requests"])
+    radar_sends(REQUEST_LANDING, "A1", "2026-11-17T10:00:00")
+    cli.main()
+    radar_sends(REQUEST_TAKEOFF, "A1", "2026-11-17T10:05:00")
+    cli.main()
+    assert "A1: REQUEST_TAKEOFF refused, it is LANDING_ASSIGNED (told radar)" in capsys.readouterr().out

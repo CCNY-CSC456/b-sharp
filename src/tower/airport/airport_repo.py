@@ -1,18 +1,17 @@
 # REQ-TOW-006, REQ-TOW-007, REQ-TOW-009, REQ-TOW-010, REQ-TOW-011, REQ-TOW-012, REQ-TOW-013
 # airport_repo.py — the ONLY tower file that talks to the airport database.
-# It can create the tables, add a new airport, assign a runway, and free it again.
+# It creates the tables, adds an airport, assigns / frees runways, and remembers which messages it handled.
+# The SQL itself lives in src/tower/sql/ (schema.sql for the tables, queries.sql for every query by name).
 #
 # How to use it:
-#   conn = sqlite3.connect("tower.db")      # open the database once
-#   create_tables(conn)                     # safe to call every time
+#   conn = sqlite3.connect("tower.db")                       # open the database once
+#   create_tables(conn)                                      # safe to call every time
 #   create_airport(conn, "JFK", 21000, 40.6413, -73.7781)
-#   assign_runway(conn, "JFK", "AA123")     # -> 1 (or None if every runway is taken)
-#   free_runway(conn, "JFK", "AA123")       # -> 1 (or None if AA123 had no runway)
-#   conn.close()                            # close it when you're done
-
-# NOTE: that doc comment is out of date but, I don't feel like changing it.
-# this works exactly the same as it did when there was the wall of sql strings
-# those are now in  dedicated .sql files (queries.sql & schema.sql)
+#   assign_runway(conn, "JFK", "AA123", "LANDING_ASSIGNED")  # -> 1 (None if every runway is taken;
+#                                                            #    InvalidRunwayTransition if the phase can't change)
+#   set_assignment_status(conn, "JFK", "AA123", "LANDED")    # same runway, new phase
+#   free_runway(conn, "JFK", "AA123")                        # -> 1 (or None if AA123 had no runway)
+#   conn.close()                                             # close it when you're done
 
 # NOTE: changed to StrEnum (string enum) for typo safety, autocomplete, and
 # removing clutter of the brackets and quotes
@@ -66,23 +65,31 @@ def mark_processed(conn, msg_key):
     with conn:
         conn.execute(QUERIES.mark_message_processed, (msg_key,))
 
-# Allowed state transition edges for runway assignments
+# Allowed changes to a runway assignment's phase (REQ-TOW-011). None = the plane holds no runway yet.
+# PARKED and DEPARTED aren't phases: they free the runway, which deletes the assignment.
 VALID_TRANSITIONS = {
-  (None, "LANDING_ASSIGNED"),               # Initial landing assignment
-  (None, "TAKEOFF_ASSIGNED"),               # Initial takeoff assignment
-  (None, "PARKED"),                         # less sure about this one (?)
-  ("LANDING_ASSIGNED", "LANDING_ASSIGNED"), # Idempotent retry
-  ("LANDING_ASSIGNED", "LANDED"),           # Plane touches down
-  ("LANDED", "LANDED"),                     # Idempotent landing update
-  ("LANDED", "PARKED"),                     # semantically valid
-  ("LANDED", "TAKEOFF_ASSIGNED"),           # Plane requests takeoff after landing
-  ("PARKED", "TAKEOFF_ASSIGNED"),           # LANDED and PARKED are the two "grounded" states?
-  ("TAKEOFF_ASSIGNED", "TAKEOFF_ASSIGNED"), # Idempotent takeoff clearance retry
+    (None, "LANDING_ASSIGNED"),               # first landing clearance
+    (None, "TAKEOFF_ASSIGNED"),               # first takeoff clearance (plane starts on the ground)
+    ("LANDING_ASSIGNED", "LANDING_ASSIGNED"), # landing clearance asked for again
+    ("LANDING_ASSIGNED", "LANDED"),           # plane touches down
+    ("LANDED", "LANDED"),                     # landing reported again
+    ("LANDED", "TAKEOFF_ASSIGNED"),           # plane asks to take off after landing
+    ("TAKEOFF_ASSIGNED", "TAKEOFF_ASSIGNED"), # takeoff clearance asked for again
 }
+
+
+class InvalidRunwayTransition(ValueError):
+    """A request that would move a plane's runway phase in a way VALID_TRANSITIONS doesn't allow."""
+
+    def __init__(self, aircraft_id, current_status, new_status):
+        super().__init__(f"Invalid FSM transition for aircraft '{aircraft_id}': "
+                         f"cannot transition from '{current_status}' to '{new_status}'.")
+        self.aircraft_id, self.current_status, self.new_status = aircraft_id, current_status, new_status
+
 
 # validate whether a runway assignment state transition is permitted.
 def validate_runway_transition(current_status: str | None, new_status: str) -> bool:
-  return (current_status, new_status) in VALID_TRANSITIONS
+    return (current_status, new_status) in VALID_TRANSITIONS
 
 
 def assign_runway(conn, airport_id, aircraft_id, new_status="LANDING_ASSIGNED"):
@@ -94,11 +101,8 @@ def assign_runway(conn, airport_id, aircraft_id, new_status="LANDING_ASSIGNED"):
         row = conn.execute(QUERIES.get_assignment_and_status, (airport_id, aircraft_id)).fetchone()
         current_status = row[1] if row else None
         if not validate_runway_transition(current_status, new_status):
-          conn.commit()     # there's still a potential problem here
-          raise ValueError( # but it (maybe) ensures at least the calls
-            f"Invalid FSM transition for aircraft '{aircraft_id}': "
-            f"cannot transition from '{current_status}' to '{new_status}'."
-          ) # to change the status have to happen in the correct sequence
+            conn.commit()  # nothing was changed; end the transaction before refusing
+            raise InvalidRunwayTransition(aircraft_id, current_status, new_status)  # caller refuses the request
 
         if row is not None:
             runway_id = row[0]
