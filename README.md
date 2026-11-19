@@ -4,12 +4,12 @@
 
 Open a terminal in your local `b-sharp` folder. Python 3.12 must be installed.
 
-Until the Command UI is merged into main, use its branch (save/commit your current work first):
+Get the latest code from main (save/commit your current work first):
 
 ```bash
 git fetch origin
-git switch command/r2-ui
-git pull --ff-only
+git switch main
+git pull --ff-only origin main
 ```
 
 **Windows — PowerShell**
