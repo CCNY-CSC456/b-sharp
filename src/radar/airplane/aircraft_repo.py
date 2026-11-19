@@ -84,6 +84,18 @@ def update_runway(conn, aircraft_id, runway_id):
         raise ValueError(f"aircraft {aircraft_id} does not exist")
     conn.commit()
 
+def update_position(conn, aircraft_id, latitude, longitude):
+    """Set the plane's latitude and longitude and refresh its timestamp to now.
+
+    Raises ValueError if there is no plane with this ID.
+    """
+    cursor = conn.execute(
+        "UPDATE aircraft SET latitude = ?, longitude = ?, timestamp = ? WHERE aircraft_id = ?",
+        (latitude, longitude, now().strftime(TIME_FORMAT), aircraft_id),
+    )
+    if cursor.rowcount == 0:
+        raise ValueError(f"aircraft {aircraft_id} does not exist")
+    conn.commit()
 
 # REQ-RAD-014
 def delete_aircraft(conn, aircraft_id):

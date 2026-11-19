@@ -21,7 +21,9 @@ from src.radar.airplane.runway_requests import (
     check_tower_replies, fake_tower_reply, report_departed, report_landed, request_landing, request_takeoff,
     send_aircraft_info,
 )
-
+from src.radar.airplane.conflict_signals import (
+    CONFLICT_REASONS, check_unsafe_separation, fake_conflict_resolved, send_conflict_until_resolved,
+)
 from src.tower.messaging.query_fetch import load_queries
 QUERIES     = load_queries("queries.sql")
 
@@ -156,6 +158,31 @@ def show_aircraft(conn):
     for aircraft_id, latitude, longitude, altitude, status, timestamp, runway_id in rows:
         runway = runway_id or "-"  # "-" when tower hasn't assigned one yet
         print(f"{aircraft_id:<8}{latitude:>10.4f}{longitude:>12.4f}{altitude:>11.1f}  {status:<11}{runway:<8}{timestamp}")
+
+
+def check_separation(conn):
+    """Read UNSAFE_SEPARATION messages from tower and move planes if needed."""
+    results = check_unsafe_separation(conn)
+    if not results:
+        print("No unsafe separation alerts from tower.")
+    for line in results:
+        print(line)
+
+
+def report_conflict(conn):
+    """Send a CONFLICT signal every 1 second until tower replies CONFLICT_RESOLVED."""
+    aircraft_id = ask_text("Aircraft ID")
+    print(f"Reasons: {', '.join(CONFLICT_REASONS)}")
+    reason = ask_text("Conflict reason")
+    try:
+        resolved = send_conflict_until_resolved(conn, aircraft_id, reason)
+    except ValueError as error:
+        print(f"\nNot sent: {error}")
+        return
+    if resolved:
+        print(f"\nConflict resolved for {aircraft_id}.")
+    else:
+        print(f"\nTimed out waiting for tower to resolve conflict for {aircraft_id}.")
 
 
 def main():
