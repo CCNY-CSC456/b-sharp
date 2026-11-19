@@ -1,3 +1,4 @@
+# REQ-TOW-014, REQ-TOW-015
 import json
 import sqlite3
 from types import SimpleNamespace
@@ -14,9 +15,11 @@ from src.tower.airport.runway_requests import (
     RUNWAY_ASSIGNED,
 )
 from src.tower.airport.scheduler import (
-    PRIORITY_HIGH,
-    PRIORITY_LOW,
-    PRIORITY_MEDIUM,
+    CONFLICT,
+    CONFLICT_RESOLVED,
+    LATE_2_HOURS,
+    LATE_4_HOURS,
+    LOW_ON_GAS,
     TowerScheduler,
 )
 
@@ -95,6 +98,19 @@ CREATE TABLE IF NOT EXISTS runway_request_queue (
     position INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     UNIQUE (airport_id, aircraft_id)
+);
+
+CREATE TABLE IF NOT EXISTS conflicts (
+    conflict_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    airport_id TEXT NOT NULL,
+    aircraft_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    first_reported_at TEXT NOT NULL,
+    spots INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('PENDING', 'RESOLVED')),
+    opened_at TEXT NOT NULL,
+    resolved_at TEXT,
+    UNIQUE (airport_id, aircraft_id, reason, first_reported_at)
 );
 
 CREATE TABLE IF NOT EXISTS runway_response_queue (
@@ -205,6 +221,18 @@ def make_test_queries():
         delete_response_queue_item=(
             "DELETE FROM runway_response_queue WHERE response_id = ? AND airport_id = ?;"
         ),
+        get_conflicts=(
+            "SELECT conflict_id, aircraft_id, reason, first_reported_at, spots, status, opened_at, resolved_at "
+            "FROM conflicts WHERE airport_id = ? ORDER BY conflict_id;"
+        ),
+        insert_conflict=(
+            "INSERT INTO conflicts (airport_id, aircraft_id, reason, first_reported_at, spots, status, opened_at) "
+            "VALUES (?, ?, ?, ?, ?, 'PENDING', ?);"
+        ),
+        resolve_conflict=(
+            "UPDATE conflicts SET status = 'RESOLVED', resolved_at = ? "
+            "WHERE airport_id = ? AND conflict_id = ? AND status = 'PENDING';"
+        ),
     )
 
 
@@ -267,7 +295,12 @@ def test_airport_repo_request_and_response_queue_persistence(db_conn):
         assert airport_repo.get_response_queue(db_conn, "KJFK") == []
 
 
-def test_priority_events_shift_planes_by_spots_and_clamps_at_front(db_conn, monkeypatch):
+def conflict_msg(aircraft_id: str, reason: str, timestamp: str) -> dict:
+    """Radar's CONFLICT message, exactly as radar's conflict_signals.py sends it."""
+    return radar_msg({"type": CONFLICT, "aircraft_id": aircraft_id, "reason": reason, "timestamp": timestamp})
+
+
+def test_conflicts_shift_planes_by_spots_and_clamps_at_front(db_conn, monkeypatch):
     # Limit to 1 runway so queued planes wait behind a single assigned runway.
     monkeypatch.setattr("src.tower.airport.airport_repo.RUNWAY_COUNT", 1)
     queries = make_test_queries()
@@ -299,16 +332,18 @@ def test_priority_events_shift_planes_by_spots_and_clamps_at_front(db_conn, monk
         )
         summary1 = scheduler1.run_cycle()
         assert summary1.queued_requests == ["P1", "P2", "P3", "P4", "P5"]
-        assert radar_out == []
+        # No runway is free, so each waiting plane is told NO_RUNWAY once.
+        assert [json.loads(m)["type"] for m in radar_out] == [NO_RUNWAY] * 5
+        radar_out.clear()
 
         # Next cycle:
-        # - P4 gets PRIORITY_LOW (1 spot): index 3 -> 2  => [P1, P2, P4, P3, P5]
-        # - P5 gets PRIORITY_MEDIUM (2 spots): index 4 -> 2 => [P1, P2, P5, P4, P3]
-        # - P3 gets PRIORITY_HIGH (3 spots): index 4 -> 1 => [P1, P3, P2, P5, P4]
-        priority_inbox = [
-            radar_msg({"type": PRIORITY_LOW, "aircraft_id": "P4", "timestamp": "t2"}),
-            radar_msg({"type": PRIORITY_MEDIUM, "aircraft_id": "P5", "timestamp": "t2"}),
-            radar_msg({"type": PRIORITY_HIGH, "aircraft_id": "P3", "timestamp": "t2"}),
+        # - P4 is Late by +2 hour (1 spot): index 3 -> 2  => [P1, P2, P4, P3, P5]
+        # - P5 is Late by +4 hour (2 spots): index 4 -> 2 => [P1, P2, P5, P4, P3]
+        # - P3 is Low on Gas (3 spots): index 4 -> 1      => [P1, P3, P2, P5, P4]
+        priority_inbox = initial_inbox + [
+            conflict_msg("P4", LATE_2_HOURS, "t2"),
+            conflict_msg("P5", LATE_4_HOURS, "t2"),
+            conflict_msg("P3", LOW_ON_GAS, "t2"),
         ]
 
         # Simulate a restart with a brand-new TowerScheduler instance on the same DB.
@@ -321,11 +356,11 @@ def test_priority_events_shift_planes_by_spots_and_clamps_at_front(db_conn, monk
         )
         summary2 = scheduler2.run_cycle()
         assert summary2.queued_requests == ["P1", "P3", "P2", "P5", "P4"]
+        resolved = [json.loads(m) for m in radar_out if json.loads(m)["type"] == CONFLICT_RESOLVED]
+        assert [m["aircraft_id"] for m in resolved] == ["P4", "P5", "P3"]  # radar can stop sending
 
-        # Clamp test: P4 (now at index 4) gets spots=99 -> clamped to index 0.
-        clamp_inbox = [
-            radar_msg({"type": PRIORITY_HIGH, "aircraft_id": "P4", "spots": 99, "timestamp": "t3"}),
-        ]
+        # Clamp test: P2 (now at index 2) is Low on Gas (3 spots) -> clamped to index 0.
+        clamp_inbox = priority_inbox + [conflict_msg("P2", LOW_ON_GAS, "t3")]
         scheduler3 = TowerScheduler(
             db_conn,
             "KJFK",
@@ -334,7 +369,7 @@ def test_priority_events_shift_planes_by_spots_and_clamps_at_front(db_conn, monk
             to_command=cmd_out.append,
         )
         summary3 = scheduler3.run_cycle()
-        assert summary3.queued_requests == ["P4", "P1", "P3", "P2", "P5"]
+        assert summary3.queued_requests == ["P2", "P1", "P3", "P5", "P4"]
 
 
 def test_queued_responses_and_request_queue_survive_file_restart(tmp_path, monkeypatch):
@@ -364,9 +399,9 @@ def test_queued_responses_and_request_queue_survive_file_restart(tmp_path, monke
         )
         res_1 = sched_1.run_cycle()
 
-        # FIRST gets runway 1; SECOND stays queued because all runways are taken.
-        assert len(radar_sent_1) == 1
-        assert json.loads(radar_sent_1[0])["aircraft_id"] == "FIRST"
+        # FIRST gets runway 1; SECOND stays queued because all runways are taken (and is told NO_RUNWAY).
+        sent_1 = [json.loads(m) for m in radar_sent_1]
+        assert [(m["type"], m["aircraft_id"]) for m in sent_1] == [(RUNWAY_ASSIGNED, "FIRST"), (NO_RUNWAY, "SECOND")]
         assert res_1.queued_requests == ["SECOND"]
     conn1.close()
 

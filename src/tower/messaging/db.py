@@ -16,48 +16,41 @@ BLOB = 0
 JSON = 1
 DATA = 2 # of a kind with (???)
 
-def init_db():
-    """Create the messages table if it doesn't exist yet. Runs once when the server starts."""
-    conn = sqlite3.connect(DB)  # open (or create) the database file
-    # "IF NOT EXISTS" means restarting the server won't wipe or duplicate the table.
+# Columns added after the first version of the messages table. A messages.db made before them doesn't
+# have them ("CREATE TABLE IF NOT EXISTS" never changes an existing table), so connect() adds them.
+ADDED_COLUMNS = {"consumed": QUERIES.add_messages_consumed, "kind": QUERIES.add_messages_kind}
+
+
+def connect():
+    """Open messages.db with the current table, upgrading a table made by older code."""
+    conn = sqlite3.connect(DB)
     conn.execute(QUERIES.messages_schema)
-    conn.commit()  # save the change to disk
-    conn.close()   # close the connection when done
+    have = {row[1] for row in conn.execute(QUERIES.messages_columns)}
+    for column, add in ADDED_COLUMNS.items():
+        if column not in have:
+            conn.execute(add)
+    conn.commit()
+    return conn
+
+
+def init_db():
+    """Create (or upgrade) the messages table. Safe to run every time."""
+    connect().close()
 
 
 def save_message(sender, recipient, content, kind=BLOB):
     """Store one message as a new row in the table. Called by send.py."""
-    conn = sqlite3.connect(DB)
+    conn = connect()
     conn.execute(QUERIES.send_message, (sender, recipient, content, kind))
-    # maybe instead automated hook handlers go here!
-    # but probably only works for parsing
-    # ie, so that can just "insert a blob (sort of)" and have it make better relational reference (?) wait no
     conn.commit()
     conn.close()
 
 
-
 def get_messages(recipient):
-  """
-  Return every message addressed to `recipient`, then increment each 'consumed' count by 1.
-  """
-  conn = sqlite3.connect(DB)
-  conn.row_factory = sqlite3.Row
-
-  with conn:
-    cursor = conn.cursor() # default_retrieve for old behavior
-    rows = cursor.execute(QUERIES.default_retrieve,(recipient,)).fetchall()
-
-    if rows:
-      row_ids = [r[0] for r in rows]
-      placeholders = ",".join("?" * len(row_ids))
-      cursor.execute(   # Bulk increment consumed instead of mutating recipient
-        f"UPDATE messages SET consumed = consumed + 1 WHERE rowid IN ({placeholders})",
-        row_ids
-      )
-  # handlers hook here dispatched off of recipient especially relays WAIT NO
-  conn.close()
-
-  return [ {"sender": s, "recipient": r, "content": c} for _, s, r, c in rows ]
-# return [{"sender": s, "recipient": r, "content": c} for s, r, c, t in rows]
-
+    """Return every message addressed to `recipient` (oldest first), then add 1 to each one's 'consumed' count."""
+    conn = connect()
+    with conn:
+        rows = conn.execute(QUERIES.default_retrieve, (recipient,)).fetchall()
+        conn.executemany(QUERIES.increment_consumed, [(row[0],) for row in rows])
+    conn.close()
+    return [{"sender": s, "recipient": r, "content": c} for _, s, r, c in rows]

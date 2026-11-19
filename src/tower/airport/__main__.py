@@ -1,4 +1,4 @@
-# REQ-TOW-008, REQ-TOW-009, REQ-TOW-011, REQ-TOW-012, REQ-TOW-013
+# REQ-TOW-008, REQ-TOW-009, REQ-TOW-011, REQ-TOW-012, REQ-TOW-013, REQ-TOW-014, REQ-TOW-015
 # main.py — answer radar's runway requests from the terminal.
 # Run from the repo root:
 #   python -m src.tower.airport answer-requests   (runs TowerScheduler with SQLite-backed priority
@@ -16,10 +16,11 @@ from src.tower.airport.runway_requests import (
     FREED,
     NO_RUNWAY,
     PARKED,
+    REQUEST_REFUSED,
     REQUEST_TAKEOFF,
 )
 from src.tower.airport.runway_status import send_runway_status
-from src.tower.airport.scheduler import TowerScheduler
+from src.tower.airport.scheduler import CONFLICT_RESOLVED, TowerScheduler
 from src.tower.airport.separation import CANCELLED, OPEN, RESOLVED
 
 # The airport tower runs. Same ID and numbers as Command's dashboard (src/command/airport.py).
@@ -43,6 +44,7 @@ def answer(conn):
         not summary.request_replies
         and not summary.forwarded_messages
         and not summary.separation_changes
+        and not summary.conflict_changes
         and not runways
     ):
         print("Nothing new to answer.")
@@ -53,6 +55,8 @@ def answer(conn):
         print(describe_forwarded(item))
     for event in summary.separation_changes:
         print(describe_separation(event))
+    for change in summary.conflict_changes:
+        print(describe_conflict(change))
     for status in runways:
         print(describe_runway(status))
 
@@ -68,6 +72,8 @@ def describe_result(result):
     if result["type"] == FREED:
         how = "parked" if result.get("reason") == PARKED else "departed"
         return f"{plane}: {how}, runway {result['runway_id']} freed"
+    if result["type"] == REQUEST_REFUSED:
+        return f"{plane}: {result['request']} refused, it is {result['phase']} (told radar)"
     if result["type"] == NO_RUNWAY:
         return f"{plane}: no runway available (told command)"
     if result["request"] == REQUEST_TAKEOFF:
@@ -99,6 +105,15 @@ def describe_separation(event):
         spot = f"({event['move_to_latitude']}, {event['move_to_longitude']})"
         return f"{name}: {planes} too close, told radar to move {event['aircraft_id']} to {spot}"
     return f"{name}: {planes} too close, no clear spot yet (told command)"
+
+
+def describe_conflict(change):
+    """One line for a conflict tower recorded or resolved."""
+    name = f"Conflict {change['conflict_id']}: {change['aircraft_id']} {change['reason']}"
+    if change.get("type") != CONFLICT_RESOLVED:
+        return f"{name}, moves up {change['spots']} (told command)"
+    where = "has a runway or left" if change["queue_position"] is None else f"now #{change['queue_position']} in the queue"
+    return f"{name} resolved, {where} (told radar and command)"
 
 
 def describe_runway(status):

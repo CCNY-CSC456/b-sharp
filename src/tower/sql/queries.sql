@@ -107,6 +107,18 @@ INSERT INTO messages (sender, recipient, content) VALUES (?, ?, ?); -- TODO remo
 INSERT INTO messages (sender, recipient, content, kind) VALUES (?, ?, ?, ?);
 
 
+-- name: messages_columns
+PRAGMA table_info(messages);
+
+-- name: add_messages_consumed
+ALTER TABLE messages ADD COLUMN consumed INTEGER DEFAULT 0;
+
+-- name: add_messages_kind
+ALTER TABLE messages ADD COLUMN kind INTEGER DEFAULT 0;
+
+-- name: increment_consumed
+UPDATE messages SET consumed = consumed + 1 WHERE rowid = ?;
+
 -- name: default_retrieve
 SELECT rowid, sender, recipient, content FROM messages WHERE recipient = ?;
 
@@ -115,7 +127,7 @@ SELECT rowid, sender, recipient, content FROM messages WHERE recipient = ? AND c
 
 
 
--- NOTE unverified
+-- REQ-TOW-014: the saved runway queue and the reply outbox (scheduler.py)
 
 -- name: get_request_queue
 SELECT queue_id, aircraft_id, req_type, req_timestamp, msg_key, position, created_at
@@ -147,6 +159,18 @@ VALUES (?, ?, ?, ?);
 DELETE FROM runway_response_queue WHERE response_id = ? AND airport_id = ?;
 
 
+
+-- name: get_conflicts
+SELECT conflict_id, aircraft_id, reason, first_reported_at, spots, status, opened_at, resolved_at
+FROM conflicts WHERE airport_id = ? ORDER BY conflict_id;
+
+-- name: insert_conflict
+INSERT INTO conflicts (airport_id, aircraft_id, reason, first_reported_at, spots, status, opened_at)
+VALUES (?, ?, ?, ?, ?, 'PENDING', ?);
+
+-- name: resolve_conflict
+UPDATE conflicts SET status = 'RESOLVED', resolved_at = ?
+WHERE airport_id = ? AND conflict_id = ? AND status = 'PENDING';
 
 ----|                                 [END]                                 |-->
 

@@ -94,6 +94,13 @@ def process_parked(conn, airport_id, aircraft_id, request):
     return None
 
 
+def refusal_reply(refused, req_type, req_timestamp):
+    """The REQUEST_REFUSED reply for an InvalidRunwayTransition (REQ-TOW-011). Used by every path that assigns runways."""
+    return {"type": REQUEST_REFUSED, "aircraft_id": refused.aircraft_id, "phase": refused.current_status,
+            "reason": f"{refused.aircraft_id} is {refused.current_status}, so it can't get {refused.new_status}",
+            "request": req_type, "request_timestamp": req_timestamp}
+
+
 def process_clearance(conn, airport_id, aircraft_id, request):
     req_type = request["type"]
     phase = TAKEOFF_ASSIGNED if req_type == REQUEST_TAKEOFF else LANDING_ASSIGNED
@@ -102,11 +109,7 @@ def process_clearance(conn, airport_id, aircraft_id, request):
     except InvalidRunwayTransition as refused:
         # e.g. REQUEST_TAKEOFF while still LANDING_ASSIGNED (it hasn't landed). Nothing changes; radar is told why,
         # and the message is still marked handled, so it can't stop tower answering everyone else.
-        reply = {"type": REQUEST_REFUSED, "aircraft_id": aircraft_id, "phase": refused.current_status,
-                 "reason": f"{aircraft_id} is {refused.current_status}, so it can't get {phase}"}
-        reply["request"] = req_type
-        reply["request_timestamp"] = request.get("timestamp")
-        return reply
+        return refusal_reply(refused, req_type, request.get("timestamp"))
 
     if runway_id is None:
         reply = {"type": NO_RUNWAY, "aircraft_id": aircraft_id}
