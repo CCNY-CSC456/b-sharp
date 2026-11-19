@@ -76,3 +76,43 @@ CREATE TABLE IF NOT EXISTS separations (
     opened_at TEXT NOT NULL,
     resolved_at TEXT
 );
+
+
+
+-- REQ-TOW-014: the saved runway queue (in order) and the replies waiting to be sent (scheduler.py)
+CREATE TABLE IF NOT EXISTS runway_request_queue (
+    queue_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    airport_id TEXT NOT NULL,
+    aircraft_id TEXT NOT NULL,
+    req_type TEXT NOT NULL CHECK(req_type IN ('REQUEST_LANDING', 'REQUEST_TAKEOFF')),
+    req_timestamp TEXT,
+    msg_key TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (airport_id, aircraft_id)
+);
+
+CREATE TABLE IF NOT EXISTS runway_response_queue (
+    response_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    airport_id TEXT NOT NULL,
+    target TEXT NOT NULL CHECK(target IN ('radar', 'command')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+-- REQ-TOW-015: one row per conflict radar reports (it repeats every second; the repeats are the same conflict).
+-- A conflict is (aircraft_id, reason, first_reported_at = radar's timestamp on the first message of the streak).
+-- spots = how many places tower moves the plane up. PENDING = the plane isn't in the queue yet, so the move waits;
+-- RESOLVED = tower moved it (or there was nothing to move: it already holds a runway or it left).
+CREATE TABLE IF NOT EXISTS conflicts (
+    conflict_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    airport_id TEXT NOT NULL,
+    aircraft_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    first_reported_at TEXT NOT NULL,
+    spots INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('PENDING', 'RESOLVED')),
+    opened_at TEXT NOT NULL,
+    resolved_at TEXT,
+    UNIQUE (airport_id, aircraft_id, reason, first_reported_at)
+);

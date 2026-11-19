@@ -6,53 +6,51 @@
 # sqlite3 is built into Python, so there's nothing extra to install.
 import sqlite3
 
+from src.tower.messaging.query_fetch import load_queries, load_schema
+QUERIES     = load_queries("queries.sql")
 
 DB = "messages.db"
 
+# these are for a yet implemented refactor
+BLOB = 0
+JSON = 1
+DATA = 2 # of a kind with (???)
+
+# Columns added after the first version of the messages table. A messages.db made before them doesn't
+# have them ("CREATE TABLE IF NOT EXISTS" never changes an existing table), so connect() adds them.
+ADDED_COLUMNS = {"consumed": QUERIES.add_messages_consumed, "kind": QUERIES.add_messages_kind}
+
+
+def connect():
+    """Open messages.db with the current table, upgrading a table made by older code."""
+    conn = sqlite3.connect(DB)
+    conn.execute(QUERIES.messages_schema)
+    have = {row[1] for row in conn.execute(QUERIES.messages_columns)}
+    for column, add in ADDED_COLUMNS.items():
+        if column not in have:
+            conn.execute(add)
+    conn.commit()
+    return conn
+
 
 def init_db():
-    """Create the messages table if it doesn't exist yet. Runs once when the server starts."""
-    conn = sqlite3.connect(DB)  # open (or create) the database file
-    # "IF NOT EXISTS" means restarting the server won't wipe or duplicate the table.
-    conn.execute("CREATE TABLE IF NOT EXISTS messages (sender TEXT, recipient TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
-    conn.commit()  # save the change to disk
-    conn.close()   # close the connection when done
+    """Create (or upgrade) the messages table. Safe to run every time."""
+    connect().close()
 
 
-def save_message(sender, recipient, content):
+def save_message(sender, recipient, content, kind=BLOB):
     """Store one message as a new row in the table. Called by send.py."""
-    conn = sqlite3.connect(DB)
-    conn.execute("INSERT INTO messages (sender, recipient, content) VALUES (?, ?, ?)", (sender, recipient, content))
+    conn = connect()
+    conn.execute(QUERIES.send_message, (sender, recipient, content, kind))
     conn.commit()
     conn.close()
 
 
 def get_messages(recipient):
-  """
-  Return every unread message addressed to `recipient`, then mark them as read
-  by appending '-READ' to their recipient field.
-  """
-  conn = sqlite3.connect(DB)
-
-  # Enable dict-like row access if preferred, but keeping tuple unpacking here
-  with conn:
-    cursor = conn.cursor()
-
-    rows = cursor.execute(
-      "SELECT rowid, sender, recipient, content FROM messages WHERE recipient = ?",
-      (recipient,)
-    ).fetchall()
-
-    # if rows: # extract rowids to perform a targeted bulk UPDATE
-    #   row_ids = [r[0] for r in rows]
-    #   placeholders = ",".join("?" * len(row_ids))
-    #
-    #   cursor.execute(
-    #     f"UPDATE messages SET recipient = recipient || '-READ' WHERE rowid IN ({placeholders})",
-    #     row_ids
-    #   )
-
-  conn.close()
-
-  return [{"sender": s, "recipient": r, "content": c} for _, s, r, c in rows]
-# return [{"sender": s, "recipient": r, "content": c} for s, r, c, t in rows]
+    """Return every message addressed to `recipient` (oldest first), then add 1 to each one's 'consumed' count."""
+    conn = connect()
+    with conn:
+        rows = conn.execute(QUERIES.default_retrieve, (recipient,)).fetchall()
+        conn.executemany(QUERIES.increment_consumed, [(row[0],) for row in rows])
+    conn.close()
+    return [{"sender": s, "recipient": r, "content": c} for _, s, r, c in rows]
