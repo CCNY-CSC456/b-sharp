@@ -172,6 +172,63 @@ VALUES (?, ?, ?, ?, ?, 'PENDING', ?);
 UPDATE conflicts SET status = 'RESOLVED', resolved_at = ?
 WHERE airport_id = ? AND conflict_id = ? AND status = 'PENDING';
 
+
+
+-- unvalidated
+
+
+-- name: insert_airport
+INSERT INTO airport (airport_id, perimeter, latitude, longitude, runway_count)
+VALUES (?, ?, ?, ?, ?);
+
+-- name: seed_runways_from_airport
+WITH RECURSIVE seq(n) AS (
+    SELECT 1
+    UNION ALL
+    SELECT n + 1
+    FROM seq, airport
+    WHERE airport.airport_id = ?
+      AND n < airport.runway_count
+)
+INSERT OR IGNORE INTO runways (airport_id, runway_id, status, timestamp, aircraft_id)
+SELECT ?, n, 'Available', ?, NULL
+FROM seq;
+
+-- name: update_airport_runway_count
+UPDATE airport
+SET runway_count = ?
+WHERE airport_id = ?;
+
+
+-- name: sync_runways_up
+WITH RECURSIVE seq(n) AS (
+    SELECT 1
+    UNION ALL
+    SELECT n + 1
+    FROM seq, airport
+    WHERE airport.airport_id = ?
+      AND n < airport.runway_count
+)
+INSERT OR IGNORE INTO runways (airport_id, runway_id, status, timestamp, aircraft_id)
+SELECT ?, n, 'Available', ?, NULL
+FROM seq;
+
+-- name: trim_excess_runways
+DELETE FROM runways
+WHERE airport_id = ?
+  AND runway_id > (
+      SELECT runway_count FROM airport WHERE airport_id = ?
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM runway_assignments ra
+      WHERE ra.airport_id = runways.airport_id
+        AND ra.runway_id = runways.runway_id
+  );
+
+-- name: last_runway_resync
+SELECT COUNT(*) FROM runways WHERE airport_id = ?;
+
 ----|                                 [END]                                 |-->
 
 

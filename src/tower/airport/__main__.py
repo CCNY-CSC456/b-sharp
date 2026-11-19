@@ -5,10 +5,11 @@
 #                                                  and response queues, separation checks, and forwarding)
 #   python -m src.tower.airport runways           (shows every runway in tower.db)
 
+import argparse
 import sqlite3
 import sys
 
-from src.tower.airport.airport_repo import create_airport, create_tables
+from src.tower.airport.airport_repo import create_airport, create_tables , set_runway_count
 from src.tower.airport.runway_requests import (
     AIRCRAFT_LANDED,
     AIRCRAFT_PARKED,
@@ -23,6 +24,8 @@ from src.tower.airport.runway_status import send_runway_status
 from src.tower.airport.scheduler import CONFLICT_RESOLVED, TowerScheduler
 from src.tower.airport.separation import CANCELLED, OPEN, RESOLVED
 
+
+
 # The airport tower runs. Same ID and numbers as Command's dashboard (src/command/airport.py).
 AIRPORT_ID = "DEMO-001"
 
@@ -34,6 +37,14 @@ def open_airport():
     create_airport(conn, AIRPORT_ID, 21000, 40.6413, -73.7781)  # returns False if it already exists
     return conn
 
+# NOTE unverified
+def set_runways(conn, count):
+    """Set runway count for AIRPORT_ID during a demo."""
+    actual = set_runway_count(conn, AIRPORT_ID, count)
+    if actual is None:
+        print(f"Airport {AIRPORT_ID} not found.")
+        return
+    print(f"{AIRPORT_ID}: target runway count set to {count} ({actual} runway rows in database)")
 
 def answer(conn):
     scheduler = TowerScheduler(conn, AIRPORT_ID)
@@ -134,21 +145,50 @@ def show_runways(conn):
         print(f"{runway_id:<8}{status:<16}{aircraft_id or '-':<10}{timestamp}")
 
 
-def main():
-    command = sys.argv[1] if len(sys.argv) > 1 else ""
-    if command not in ("answer-requests", "runways"):
-        print("Usage: python -m src.tower.airport answer-requests")
-        print("       python -m src.tower.airport runways")
+def run_set_runways(conn, args):
+    """Set runway count for AIRPORT_ID during a demo."""
+    if args.count <= 0:
+        raise SystemExit("Runway count must be a positive integer.")
+
+    actual = set_runway_count(conn, AIRPORT_ID, args.count)
+    if actual is None:
+        print(f"Airport {AIRPORT_ID} not found.")
         return
+    print(f"{AIRPORT_ID}: target runway count set to {args.count} ({actual} runway rows in database)")
+
+
+def run_answer_requests(conn, _args):
+    answer(conn)
+
+
+def run_show_runways(conn, _args):
+    show_runways(conn)
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(prog="python -m src.tower.airport")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    answer_parser = subparsers.add_parser("answer-requests", help="Run TowerScheduler and send status updates")
+    answer_parser.set_defaults(func=run_answer_requests)
+
+    runways_parser = subparsers.add_parser("runways", help="Show every runway in tower.db")
+    runways_parser.set_defaults(func=run_show_runways)
+
+    set_runways_parser = subparsers.add_parser("set-runways", help="Set runway count for the demo airport")
+    set_runways_parser.add_argument("count", type=int, help="Positive number of runways")
+    set_runways_parser.set_defaults(func=run_set_runways)
+
+    return parser
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
     conn = open_airport()
     try:
-        if command == "answer-requests":
-            answer(conn)
-        else:
-            show_runways(conn)
+        args.func(conn, args)
     finally:
         conn.close()
-
 
 if __name__ == "__main__":
     main()
