@@ -84,6 +84,94 @@ WHERE airport_id = ? AND separation_id = ? AND status = 'WAITING';
 UPDATE separations SET status = ?, resolved_at = ?
 WHERE airport_id = ? AND separation_id = ? AND status IN ('WAITING', 'OPEN');
 
+
+-- NOTE extracted from the db file during refactor
+
+-- name: old_schema
+CREATE TABLE IF NOT EXISTS messages (sender TEXT, recipient TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP);
+
+-- name: messages_schema
+CREATE TABLE IF NOT EXISTS messages (
+    sender    TEXT,
+    recipient TEXT,
+    content   TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    consumed  INTEGER DEFAULT 0,
+    kind      INTEGER DEFAULT 0
+);
+
+-- name: save_message
+INSERT INTO messages (sender, recipient, content) VALUES (?, ?, ?); -- TODO remove once confident in messaging refactor
+
+-- name: send_message
+INSERT INTO messages (sender, recipient, content, kind) VALUES (?, ?, ?, ?);
+
+
+-- name: messages_columns
+PRAGMA table_info(messages);
+
+-- name: add_messages_consumed
+ALTER TABLE messages ADD COLUMN consumed INTEGER DEFAULT 0;
+
+-- name: add_messages_kind
+ALTER TABLE messages ADD COLUMN kind INTEGER DEFAULT 0;
+
+-- name: increment_consumed
+UPDATE messages SET consumed = consumed + 1 WHERE rowid = ?;
+
+-- name: default_retrieve
+SELECT rowid, sender, recipient, content FROM messages WHERE recipient = ?;
+
+-- name: enhanced_retrieve
+SELECT rowid, sender, recipient, content FROM messages WHERE recipient = ? AND consumed = 0;
+
+
+
+-- REQ-TOW-014: the saved runway queue and the reply outbox (scheduler.py)
+
+-- name: get_request_queue
+SELECT queue_id, aircraft_id, req_type, req_timestamp, msg_key, position, created_at
+FROM runway_request_queue
+WHERE airport_id = ?
+ORDER BY position ASC, queue_id ASC;
+
+-- name: insert_request_queue
+INSERT INTO runway_request_queue (airport_id, aircraft_id, req_type, req_timestamp, msg_key, position, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- name: delete_request_queue_by_aircraft
+DELETE FROM runway_request_queue WHERE airport_id = ? AND aircraft_id = ?;
+
+-- name: replace_request_queue
+DELETE FROM runway_request_queue WHERE airport_id = ?;
+
+-- name: get_response_queue
+SELECT response_id, target, payload_json, created_at
+FROM runway_response_queue
+WHERE airport_id = ?
+ORDER BY response_id ASC;
+
+-- name: insert_response_queue
+INSERT INTO runway_response_queue (airport_id, target, payload_json, created_at)
+VALUES (?, ?, ?, ?);
+
+-- name: delete_response_queue_item
+DELETE FROM runway_response_queue WHERE response_id = ? AND airport_id = ?;
+
+
+
+-- name: get_conflicts
+SELECT conflict_id, aircraft_id, reason, first_reported_at, spots, status, opened_at, resolved_at
+FROM conflicts WHERE airport_id = ? ORDER BY conflict_id;
+
+-- name: insert_conflict
+INSERT INTO conflicts (airport_id, aircraft_id, reason, first_reported_at, spots, status, opened_at)
+VALUES (?, ?, ?, ?, ?, 'PENDING', ?);
+
+-- name: resolve_conflict
+UPDATE conflicts SET status = 'RESOLVED', resolved_at = ?
+WHERE airport_id = ? AND conflict_id = ? AND status = 'PENDING';
+
 ----|                                 [END]                                 |-->
 
 

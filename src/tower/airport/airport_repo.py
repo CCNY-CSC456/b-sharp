@@ -1,4 +1,4 @@
-# REQ-TOW-006, REQ-TOW-007, REQ-TOW-009, REQ-TOW-010, REQ-TOW-011, REQ-TOW-012, REQ-TOW-013
+# REQ-TOW-006, REQ-TOW-007, REQ-TOW-009, REQ-TOW-010, REQ-TOW-011, REQ-TOW-012, REQ-TOW-013, REQ-TOW-014, REQ-TOW-015
 # airport_repo.py — the ONLY tower file that talks to the airport database.
 # It creates the tables, adds an airport, assigns / frees runways, and remembers which messages it handled.
 # The SQL itself lives in src/tower/sql/ (schema.sql for the tables, queries.sql for every query by name).
@@ -20,7 +20,7 @@ import sqlite3
 from functools import cache
 from pathlib import Path
 from datetime import datetime
-
+import json
 
 from src.tower.messaging.query_fetch import load_queries, load_schema
 
@@ -65,6 +65,8 @@ def mark_processed(conn, msg_key):
     with conn:
         conn.execute(QUERIES.mark_message_processed, (msg_key,))
 
+
+
 # Allowed changes to a runway assignment's phase (REQ-TOW-011). None = the plane holds no runway yet.
 # PARKED and DEPARTED aren't phases: they free the runway, which deletes the assignment.
 VALID_TRANSITIONS = {
@@ -76,6 +78,7 @@ VALID_TRANSITIONS = {
     ("LANDED", "TAKEOFF_ASSIGNED"),           # plane asks to take off after landing
     ("TAKEOFF_ASSIGNED", "TAKEOFF_ASSIGNED"), # takeoff clearance asked for again
 }
+# Not sure that's right but will have to check hence ugly comment out
 
 
 class InvalidRunwayTransition(ValueError):
@@ -202,3 +205,82 @@ def close_separation(conn, airport_id, separation_id, status):
     with conn:
         cursor = conn.execute(QUERIES.close_separation, (status, now(), airport_id, separation_id))
     return cursor.rowcount == 1
+
+
+# --- REQ-TOW-014: the saved runway queue and the reply outbox (used by scheduler.py) ---
+
+def get_request_queue(conn, airport_id):
+    columns = ("queue_id", "aircraft_id", "req_type", "req_timestamp", "msg_key", "position", "created_at")
+    rows = conn.execute(QUERIES.get_request_queue, (airport_id,))
+    return [dict(zip(columns, row)) for row in rows]
+
+
+def save_request_queue(conn, airport_id, items):
+    """Persist ordered queue entries `(aircraft_id, req_type, req_timestamp, msg_key)` for `airport_id`."""
+    ts = now()
+    with conn:
+        conn.execute(QUERIES.replace_request_queue, (airport_id,))
+        conn.executemany(
+            QUERIES.insert_request_queue,
+            [
+                (airport_id, item["aircraft_id"], item["req_type"], item.get("req_timestamp"), item["msg_key"], idx, ts)
+                for idx, item in enumerate(items)
+            ],
+        )
+
+
+def remove_queued_request(conn, airport_id, aircraft_id):
+    with conn:
+        conn.execute(QUERIES.delete_request_queue_by_aircraft, (airport_id, aircraft_id))
+
+
+def enqueue_response(conn, airport_id, target, payload):
+    with conn:
+        cursor = conn.execute(
+            QUERIES.insert_response_queue,
+            (airport_id, target, json.dumps(payload), now()),
+        )
+    return cursor.lastrowid
+
+
+def get_response_queue(conn, airport_id):
+    columns = ("response_id", "target", "payload_json", "created_at")
+    rows = conn.execute(QUERIES.get_response_queue, (airport_id,))
+    return [
+        {
+            "response_id": row[0],
+            "target": row[1],
+            "payload": json.loads(row[2]),
+            "created_at": row[3],
+        }
+        for row in rows
+    ]
+
+
+def remove_queued_response(conn, airport_id, response_id):
+    with conn:
+        conn.execute(QUERIES.delete_response_queue_item, (response_id, airport_id))
+
+
+# --- REQ-TOW-015: conflicts radar reports (late / low on gas) ---
+
+def get_conflicts(conn, airport_id):
+    """Every conflict as a dict, oldest first."""
+    columns = ("conflict_id", "aircraft_id", "reason", "first_reported_at", "spots", "status", "opened_at", "resolved_at")
+    return [dict(zip(columns, row)) for row in conn.execute(QUERIES.get_conflicts, (airport_id,))]
+
+
+def open_conflict(conn, airport_id, aircraft_id, reason, first_reported_at, spots):
+    """Record a new PENDING conflict and return its conflict_id."""
+    with conn:
+        cursor = conn.execute(QUERIES.insert_conflict,
+                              (airport_id, aircraft_id, reason, first_reported_at, spots, now()))
+    return cursor.lastrowid
+
+
+def resolve_conflict(conn, airport_id, conflict_id):
+    """Mark a PENDING conflict RESOLVED. Returns True if it was still pending."""
+    with conn:
+        cursor = conn.execute(QUERIES.resolve_conflict, (now(), airport_id, conflict_id))
+    return cursor.rowcount == 1
+

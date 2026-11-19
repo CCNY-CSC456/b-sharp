@@ -25,7 +25,7 @@ Command shall notify the operator of Tower's important events, rank alerts by se
 
 ## Integration status
 
-Unsafe separation is exercised against real Tower producers on main. The severity-2 producer is not present in the reviewed main; Tower has proposed the matching format below; its queue producer is still being implemented. Command already accepts it.
+Unsafe separation and severity-2 queue conflicts are supported by real Tower producers on main, including PR #54. Command accepts their opening and matching resolution messages with the format below. Radar's R2 CLI integration must also be present for the complete live workflow.
 
 ```json
 {"type":"CONFLICT","conflict_id":"fuel-A1-1","severity":2,"aircraft_id":"A1","reason":"Low on gas (non-emergency)","timestamp":"2026-11-19T10:00:00"}
