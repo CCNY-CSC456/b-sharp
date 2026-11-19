@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from src.command.airport import get_airport_state
+from src.command.alerts import get_alert_snapshot
 
 # NOTE these are tower's responsibility
 #from src.command.aircraft import get_aircraft_state
@@ -72,3 +73,9 @@ def command_messages():
 def aircraft_state():
     """Return recorded geographic positions from the shared local Radar store."""
     return get_aircraft_state()
+
+
+@app.get("/api/alerts")
+def alerts():
+    """REQ-OPS-007: Tower incidents, severity and matching resolutions."""
+    return get_alert_snapshot()

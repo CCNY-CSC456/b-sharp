@@ -20,5 +20,6 @@
 | REQ-TOW-009 | Tower | Forward Plane Positions to Command | src/tower/airport/runway_requests.py, src/tower/airport/__main__.py | tests/tower/test_forward_positions.py | |
 | REQ-TOW-012 | Tower | Runway Status and Refusals to Command | src/tower/airport/runway_status.py, src/tower/airport/runway_requests.py, src/tower/airport/__main__.py | tests/tower/test_runway_status.py | |
 | REQ-TOW-013 | Tower | Unsafe Separation | src/tower/airport/separation.py, src/tower/airport/airport_repo.py, src/tower/airport/__main__.py | tests/tower/test_separation.py | |
+| REQ-OPS-007 | Command | R2 severity-ranked Tower alerts, aircraft highlighting, configurable sound and operator actions | src/command/alerts.py, src/command/dashboard.py, src/command/dashboard.html | tests/command/test_alerts.py, tests/command/browser_alerts.cjs | |
 | REQ-TOW-014 | Tower | Runway Queue | src/tower/airport/scheduler.py, src/tower/airport/airport_repo.py | tests/tower/test_scheduler.py, tests/tower/test_post_hoc_scheduler.py | |
 | REQ-TOW-015 | Tower | Conflicts Reorder the Queue | src/tower/airport/scheduler.py, src/tower/airport/airport_repo.py | tests/tower/test_scheduler.py, tests/tower/test_post_hoc_scheduler.py | |
