@@ -5,6 +5,9 @@ CREATE TABLE IF NOT EXISTS airport (
     longitude REAL
 );
 
+-- The airport's runways (10, created with the airport). Who is ON a runway lives in runway_assignments.
+-- status and aircraft_id are from before runway_assignments existed: tower no longer changes them
+-- (status stays 'Available'), but they stay because command's dashboard still reads this table.
 CREATE TABLE IF NOT EXISTS runways (
     airport_id TEXT,
     runway_id INTEGER,
@@ -14,11 +17,13 @@ CREATE TABLE IF NOT EXISTS runways (
     PRIMARY KEY (airport_id, runway_id)
 );
 
+-- Messages tower has already handled (the shared inbox never forgets), as "aircraft:type:timestamp" keys.
 CREATE TABLE IF NOT EXISTS processed_messages (
     message_id TEXT PRIMARY KEY
 );
 
--- Dynamic assignments (1:1 per-airport constraint between runway and aircraft)
+-- Who is on which runway, and in which phase. A row exists only while a plane holds a runway; a free
+-- runway has no row. One plane per runway and one runway per plane, per airport.
 CREATE TABLE IF NOT EXISTS runway_assignments (
     airport_id TEXT NOT NULL,
     runway_id INTEGER NOT NULL,
@@ -117,3 +122,4 @@ CREATE TABLE IF NOT EXISTS runway_response_queue (
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
