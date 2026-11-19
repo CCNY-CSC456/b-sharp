@@ -8,6 +8,7 @@
 # Nothing happens in the background: replies are only read when check_tower_replies() is called.
 
 import json
+import time
 
 # Tower's messaging functions, used exactly as tower wrote them.
 from src.tower.messaging.db import init_db as init_messages_db, save_message, get_messages
@@ -22,7 +23,7 @@ NO_RUNWAY = "NO_RUNWAY"                # tower -> radar
 LANDED = "LANDED"                      # radar -> tower, plane is off the runway (REQ-RAD-014)
 DEPARTED = "DEPARTED"                  # radar -> tower, plane has left (REQ-RAD-014)
 AIRCRAFT_INFO = "AIRCRAFT_INFO"        # radar -> tower, a plane's current data (REQ-RAD-016)
-
+RUNWAY_ASSIGNMENT_DELAY_SECONDS = 30.0
 
 def send_to_tower(content):
     """Put one message in tower's inbox. Run from the repo root so it uses the shared messages.db."""

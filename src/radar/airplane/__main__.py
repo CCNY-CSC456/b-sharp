@@ -14,11 +14,12 @@
 # Python runs a file named __main__.py when you use "python -m" on its folder.
 
 import sys
+import time
 
 from src.radar.airplane.aircraft_repo import get_aircraft, init_db, update_altitude
 from src.radar.airplane.create_airplane import create_airplane
 from src.radar.airplane.runway_requests import (
-    check_tower_replies, fake_tower_reply, report_departed, report_landed, request_landing, request_takeoff,
+    RUNWAY_ASSIGNMENT_DELAY_SECONDS, check_tower_replies, fake_tower_reply, report_departed, report_landed, request_landing, request_takeoff,
     send_aircraft_info,
 )
 from src.radar.airplane.conflict_signals import (
@@ -116,6 +117,8 @@ def request(conn, ask_tower, kind):
 def report(conn, tell_tower, done):
     """Tell tower a plane is done with its runway. tell_tower is report_landed or report_departed (REQ-RAD-014)."""
     aircraft_id = ask_text("Aircraft ID")
+    print(f"Waiting {int(RUNWAY_ASSIGNMENT_DELAY_SECONDS)}s after runway assignment.")
+    time.sleep(RUNWAY_ASSIGNMENT_DELAY_SECONDS)
     try:
         tell_tower(conn, aircraft_id)
     except ValueError as error:  # e.g. no plane with that ID
