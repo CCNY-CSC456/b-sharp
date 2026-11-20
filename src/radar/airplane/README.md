@@ -1,4 +1,4 @@
-# Airplane commands (REQ-RAD-012 to REQ-RAD-016)
+# Airplane commands (REQ-RAD-012 to REQ-RAD-020)
 
 Run everything from the repo root (the `b-sharp` folder), with the venv on:
 ```
@@ -10,6 +10,7 @@ source venv/bin/activate
 python -m src.radar.airplane create              # asks ID, latitude, longitude, altitude, status
 python -m src.radar.airplane list                # table of every plane in radar.db
 python -m src.radar.airplane set-altitude        # asks ID and new altitude (feet), sends the update to tower
+python -m src.radar.airplane set-position        # asks ID, new latitude and longitude, sends the update to tower
 python -m src.radar.airplane send-info           # asks ID, sends that plane's current data to tower
 ```
 
@@ -28,6 +29,45 @@ python -m src.radar.airplane report-departed     # tell tower the plane left (pl
 ```
 - Both ask for the aircraft ID. Tower uses these to free the plane's runway.
 - If radar has no plane with that ID, you get `Not sent: aircraft a1 does not exist` and nothing is sent.
+
+## R2: the run loop (REQ-RAD-017, REQ-RAD-018, REQ-RAD-019)
+```
+python -m src.radar.airplane run                 # every 1s until Ctrl+C: does all of the below
+python -m src.radar.airplane run --once          # one pass, then stop
+python -m src.radar.airplane report-conflict     # asks ID and reason (1 LATE_2H, 2 LATE_4H, 3 LOW_FUEL)
+                                                 #   sent as CONFLICT "Late by +2 hour" / "Late by +4 hour" / "Low on Gas"
+python -m src.radar.airplane conflicts           # table of every conflict, OPEN or RESOLVED
+python -m src.radar.airplane report-parked       # tell tower a landed plane parked (frees its runway)
+python -m src.radar.airplane fake-unsafe-separation   # TESTING: be tower, tell radar to move a plane
+python -m src.radar.airplane fake-conflict-resolved   # TESTING: be tower, resolve a conflict
+```
+Each pass of `run`:
+1. **Unsafe separation:** moves every plane tower said is too close to the spot tower sent, then sends
+   `UNSAFE_SEPARATION_RESOLVED` and the plane's new position. Each event is handled once.
+2. **Conflict resolved:** closes conflicts tower answered with `CONFLICT_RESOLVED` (same plane and reason).
+3. **Runway assigned:** saves the runway and starts a 30 second wait.
+4. **30 seconds up:** a landing plane sends `LANDED` then `PARKED` (now Parked, altitude 0, no runway);
+   a departing plane sends `DEPARTED`. Tower frees the runway.
+5. **Conflict signals:** sends one `CONFLICT` (tower's exact reason text, plus a `warning` sentence) for every
+   conflict still OPEN. Tower moves the plane up its runway queue once and answers `CONFLICT_RESOLVED`.
+
+A reason can be reported once per flight (tower counts plane + reason as one conflict until the plane departs).
+
+The inbox is read once per pass for every plane, and nothing waits on one plane, so many planes work at once.
+
+## Walkthrough: R2 without tower running
+```
+python -m src.radar.airplane create              # b2, 40.70, -73.80, 3000, Landing
+python -m src.radar.airplane report-conflict     # b2, 3  ->  Conflict LOW_FUEL opened for b2
+python -m src.radar.airplane fake-unsafe-separation   # b2, 40.81, -73.80
+python -m src.radar.airplane run                 # b2 moved; "sent 1 conflict signal(s)" every second. Ctrl+C
+python -m src.radar.airplane fake-conflict-resolved   # paste the conflict ID it shows
+python -m src.radar.airplane run --once          # b2: conflict LOW_FUEL resolved by tower
+python -m src.radar.airplane request-landing     # b2
+python -m src.radar.airplane fake-tower-reply    # b2, R1
+python -m src.radar.airplane run                 # "landing in 30s" ... 30s later "landed ... and parked"
+```
+With tower running instead, use `python -m src.tower.airport answer-requests` in place of the fake commands.
 
 ## Messages (tower's messaging)
 ```
@@ -88,6 +128,9 @@ pytest tests/tower -v
 - IDs must match exactly: `a1` and `A1` are different planes.
 - Fresh start: `rm radar.db messages.db` (both git-ignored; recreated automatically).
 - After pulling the runway update, delete your old `radar.db` once. It has no `runway_id` column.
+- The R2 tables (handled_messages, conflicts, runway_timers) are added to an existing `radar.db` automatically.
+- Radar remembers which tower messages it already handled in `radar.db`. If you delete `radar.db`,
+  delete `messages.db` too, or old tower messages will be handled again for planes with the same IDs.
 - Replying by hand without the helper: `python -m src.tower.messaging send`, with sender `tower`,
   recipient `radar`, and message `{"type": "RUNWAY_ASSIGNED", "aircraft_id": "a1", "runway_id": "R1"}`.
 - `python -m src.radar.airplane.demo B45` still works: it creates a plane and prints both databases.

@@ -34,6 +34,7 @@
         --not-available-line: #6a55a0;
         --arrival: #5ab4ff;
         --departure: #ffb02e;
+        --warning: #ffd166;
 
         /* Warnings and errors */
         --danger: #ff6b6b;
@@ -244,6 +245,24 @@
         .status-dot { animation: pulse 2.8s ease-in-out infinite; }
         @keyframes pulse { 50% { opacity: .55; } }
       }
+
+      /* REQ-OPS-007: incident styling overrides ordinary aircraft status. */
+      .alerts-panel { margin-bottom: 20px; }
+      .alert-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+      .alert-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+      .alert-button { border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 10px; color: var(--text); background: var(--field); cursor: pointer; font-size: 12px; }
+      .alert-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .alert-button:disabled { opacity: .6; cursor: default; }
+      .alert-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 10px; padding: 0; list-style: none; max-height: 340px; overflow: auto; }
+      .alert-card { border: 1px solid var(--line-strong); border-left: 4px solid var(--warning); border-radius: 8px; padding: 13px; background: var(--field); overflow-wrap: anywhere; }
+      .alert-card.severity-1 { border-left-color: var(--danger); }
+      .alert-card h3 { font-size: 14px; margin: 0 0 7px; }
+      .alert-card p { margin: 6px 0; font-size: 12px; line-height: 1.5; }
+      .alert-card.resolved { border-left-color: var(--available); }
+      .flight-marker.alert-severity-1, .aircraft-callout.alert-severity-1, .aircraft-record.alert-severity-1 { color: var(--danger); outline: 2px solid var(--danger); }
+      .flight-marker.alert-severity-2, .aircraft-callout.alert-severity-2, .aircraft-record.alert-severity-2 { color: var(--warning); outline: 2px solid var(--warning); }
+      .aircraft-alert-detail { color: inherit; font-weight: 650; }
+      .alerts-stale { opacity: .7; }
     </style>
   </head>
   <body>
@@ -263,6 +282,18 @@
           <div class="metric"><dt class="metric-label">Runways</dt><dd id="airport-runway-count" class="metric-value">—</dd></div>
           <div class="metric"><dt class="metric-label">Latest record time</dt><dd class="metric-value"><time id="airport-updated">—</time></dd></div>
         </dl>
+      </section>
+
+      <section class="panel alerts-panel" id="alerts-panel" aria-labelledby="alerts-title">
+        <div class="alert-toolbar">
+          <div><h2 id="alerts-title">R2 · Tower alerts</h2><p id="alert-summary" class="source-note" role="status">Loading Tower alerts…</p></div>
+          <div class="alert-actions"><button id="sound-toggle" class="alert-button" type="button" aria-pressed="true">Mute alert sounds</button><button id="sound-test" class="alert-button" type="button">Test sound</button><button id="alerts-refresh" class="alert-button" type="button">Refresh now</button></div>
+        </div>
+        <p id="sound-note" class="source-note">Sound on · click anywhere to allow audio · one tone per 10 new incidents. Repeated reports update the same alert.</p>
+        <p class="source-note">Severity 1: unsafe separation · Severity 2: conflict. Tower clears alerts when resolved.</p>
+        <p id="alerts-error" class="degraded-message" role="alert" hidden></p>
+        <ul id="alert-list" class="alert-list" aria-label="Active Tower alerts"></ul>
+        <details><summary id="resolved-summary">Recently cleared alerts</summary><ul id="resolved-alert-list" class="alert-list" aria-label="Recently cleared Tower alerts"></ul></details>
       </section>
 
       <div class="content-grid">
@@ -341,6 +372,155 @@
       let lastAircraftSnapshot = null;
       let selectedAircraft = null;
       let refreshing = false;
+      let lastAlertSnapshot = null;
+
+      // REQ-OPS-007: Tower owns alert state; Command displays it.
+      let audioContext = null;
+      let soundEnabled = true;
+      let observedOpenings = null;
+      let newIncidentCount = 0;
+      let SOUND_EVERY = 10; // Default; /api/alerts supplies the configured threshold.
+
+      function alertTitle(alert) { return alert.type === "separation" ? "Unsafe separation" : "Conflict"; }
+      function alertState(alert) {
+        return ({ waiting: "Waiting for a safe destination", instructed: "Move instructed · awaiting Tower resolution", active: "Awaiting Tower resolution", resolved: "Cleared by Tower" })[alert.status];
+      }
+      function alertsForAircraft(id) { return (lastAlertSnapshot?.active || []).filter(a => a.aircraft_ids.includes(id)); }
+      function aircraftAlertClass(ids) {
+        const levels = ids.flatMap(id => alertsForAircraft(id).map(a => a.severity));
+        return levels.length ? ` alert-severity-${Math.min(...levels)}` : "";
+      }
+      function soundNote() {
+        document.getElementById("sound-toggle").textContent = soundEnabled ? "Mute alert sounds" : "Enable alert sounds";
+        document.getElementById("sound-toggle").setAttribute("aria-pressed", String(soundEnabled));
+        document.getElementById("sound-note").textContent = `Sound ${soundEnabled ? (audioContext?.state === "running" ? "on" : "on · click anywhere to allow audio") : "off"} · one tone per ${SOUND_EVERY} new incidents · ${newIncidentCount % SOUND_EVERY}/${SOUND_EVERY} toward next tone. Repeated reports do not count again.`;
+      }
+      async function prepareAudio() {
+        const Audio = window.AudioContext || window.webkitAudioContext;
+        if (!Audio) throw new Error("Audio unavailable");
+        if (!audioContext) audioContext = new Audio();
+        await audioContext.resume();
+        if (audioContext.state !== "running") throw new Error("Audio blocked");
+      }
+      function playAlertTone() {
+        if (!audioContext || audioContext.state !== "running") return false;
+        const start = audioContext.currentTime;
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.frequency.setValueAtTime(660, start);
+        oscillator.frequency.setValueAtTime(880, start + .12);
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(.12, start + .02);
+        gain.gain.setValueAtTime(.12, start + .22);
+        gain.gain.linearRampToValueAtTime(0, start + .3);
+        oscillator.connect(gain); gain.connect(audioContext.destination);
+        oscillator.start(start); oscillator.stop(start + .31);
+        oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+        return true;
+      }
+      async function soundAction(testOnly) {
+        try {
+          if (!testOnly && soundEnabled) { soundEnabled = false; soundNote(); return; }
+          await prepareAudio();
+          if (testOnly) playAlertTone(); else soundEnabled = true;
+          soundNote();
+        } catch {
+          soundNote();
+          document.getElementById("sound-note").textContent = "Sound unavailable or blocked by the browser. Visual alerts remain active; try Test sound again.";
+        }
+      }
+      // Browsers allow audio after a user gesture; the preference starts enabled.
+      async function unlockAlertAudio() {
+        if (!soundEnabled || audioContext?.state === "running") return;
+        try { await prepareAudio(); } catch { /* Keep the preference; allow another gesture to retry. */ }
+        soundNote();
+      }
+      document.addEventListener("pointerdown", unlockAlertAudio);
+      document.addEventListener("keydown", unlockAlertAudio);
+      document.getElementById("sound-toggle").addEventListener("click", () => soundAction(false));
+      document.getElementById("sound-test").addEventListener("click", () => soundAction(true));
+      document.getElementById("alerts-refresh").addEventListener("click", () => refreshDashboard());
+
+      function alertButton(label, key, action) {
+        const button = document.createElement("button");
+        button.type = "button"; button.className = "alert-button";
+        button.textContent = label; button.dataset.alertAction = key;
+        button.addEventListener("click", action);
+        return button;
+      }
+      function renderAlerts() {
+        const focused = document.activeElement?.dataset.alertAction;
+        for (const [listId, alerts] of [["alert-list", lastAlertSnapshot?.active || []], ["resolved-alert-list", lastAlertSnapshot?.recent || []]]) {
+          const list = document.getElementById(listId);
+          list.replaceChildren();
+          for (const alert of alerts) {
+            const card = document.createElement("li");
+            card.className = `alert-card severity-${alert.severity}${alert.status === "resolved" ? " resolved" : ""}`;
+            const title = document.createElement("h3");
+            title.textContent = `Severity ${alert.severity} · ${alertTitle(alert)} · ${alert.aircraft_ids.join(" / ")}`;
+            const detail = document.createElement("p");
+            detail.textContent = `${alertState(alert)}${alert.reason ? ` · ${alert.reason}` : ""}`;
+            const time = document.createElement("p"); time.className = "source-note";
+            time.textContent = `Updated ${alert.updated_at || "time unavailable"}`;
+            card.append(title, detail, time);
+            if (alert.status !== "resolved") {
+              const actions = document.createElement("div"); actions.className = "alert-actions";
+              for (const id of alert.aircraft_ids) {
+                const view = alertButton(`View ${id}`, `${alert.key}:view:${id}`, () => {
+                  document.getElementById("map-view").value = "aircraft";
+                  updateMapView(); selectAircraft(id);
+                  document.getElementById("map-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+                });
+                view.disabled = !lastAircraftSnapshot?.aircraft.some(p => p.aircraft_id === id);
+                if (view.disabled) view.title = "No recorded coordinates available; alert remains visible.";
+                actions.append(view);
+              }
+              actions.append(alertButton("Contact Tower", `${alert.key}:contact`, () => {
+                const input = document.getElementById("message-input");
+                if (!input.value.trim()) input.value = `${alertTitle(alert)} ${alert.key}: ${alert.aircraft_ids.join(" / ")} — requesting status update.`;
+                messageFeedback.textContent = "Review the message, then Send to Tower. Any existing draft was kept.";
+                input.focus(); input.scrollIntoView({ behavior: "smooth", block: "center" });
+              }));
+              card.append(actions);
+            }
+            list.append(card);
+          }
+          if (!alerts.length && lastAlertSnapshot) {
+            const empty = document.createElement("li"); empty.className = "source-note";
+            empty.textContent = listId === "alert-list" ? "No active incidents in Tower's message history." : "No cleared alerts recorded.";
+            list.append(empty);
+          }
+        }
+        document.getElementById("resolved-summary").textContent = `Recently cleared alerts (${lastAlertSnapshot?.recent.length || 0})`;
+        if (focused) [...document.querySelectorAll("[data-alert-action]")].find(b => b.dataset.alertAction === focused)?.focus({ preventScroll: true });
+      }
+      function updateAlerts(snapshot) {
+        const error = document.getElementById("alerts-error");
+        document.getElementById("alert-list").classList.toggle("alerts-stale", !snapshot);
+        if (!snapshot) {
+          error.hidden = false;
+          error.textContent = lastAlertSnapshot ? "Tower alerts could not be refreshed. Showing the last received incidents; their state may have changed." : "Tower alerts are unavailable. Command will retry automatically.";
+          document.getElementById("alert-summary").textContent = lastAlertSnapshot ? "Alert feed unavailable · last received state" : "Alert feed unavailable";
+          return;
+        }
+        if (Number.isInteger(snapshot.sound_every) && snapshot.sound_every > 0 && snapshot.sound_every !== SOUND_EVERY) {
+          SOUND_EVERY = snapshot.sound_every;
+          newIncidentCount = 0;
+          observedOpenings = null;
+        }
+        error.hidden = snapshot.ignored_alert_count === 0;
+        error.textContent = `${snapshot.ignored_alert_count} alert message(s) could not be matched safely. Check the Tower message format.`;
+        if (observedOpenings !== null && snapshot.opened_count >= observedOpenings) {
+          const before = Math.floor(newIncidentCount / SOUND_EVERY);
+          newIncidentCount += snapshot.opened_count - observedOpenings;
+          if (soundEnabled && Math.floor(newIncidentCount / SOUND_EVERY) > before) playAlertTone();
+        } else if (observedOpenings !== null) newIncidentCount = 0;
+        observedOpenings = snapshot.opened_count;
+        lastAlertSnapshot = snapshot;
+        const severe = snapshot.active.filter(a => a.severity === 1).length;
+        document.getElementById("alert-summary").textContent = `${snapshot.active.length} active · ${severe} severity 1 · ${snapshot.active.length - severe} severity 2 · Tower-reported state`;
+        soundNote();
+      }
 
       async function getJson(url) {
         const controller = new AbortController();
@@ -545,6 +725,7 @@
             callout.type = "button";
             callout.className = `aircraft-callout${marker.classList.contains("arrival") ? " arrival" : marker.classList.contains("departure") ? " departure" : ""}`;
             callout.dataset.position = marker.dataset.position;
+            for (const level of [1, 2]) callout.classList.toggle(`alert-severity-${level}`, marker.classList.contains(`alert-severity-${level}`));
             const copy = label.cloneNode(true);
             callout.append(copy);
             callout.addEventListener("click", () => marker.click());
@@ -597,7 +778,7 @@
           const item = document.createElement("li");
           const record = document.createElement("button");
           record.type = "button";
-          record.className = "aircraft-record";
+          record.className = `aircraft-record${aircraftAlertClass([plane.aircraft_id])}`;
           record.dataset.aircraftId = plane.aircraft_id;
           record.setAttribute("aria-pressed", String(selectedAircraft === plane.aircraft_id));
           record.addEventListener("click", () => selectAircraft(plane.aircraft_id));
@@ -611,6 +792,13 @@
           const time = document.createElement("time");
           setRecordTime(time, plane.timestamp, "Position recorded ");
           record.append(title, coordinates, state, time);
+          const warnings = alertsForAircraft(plane.aircraft_id);
+          if (warnings.length) {
+            const detail = document.createElement("span");
+            detail.className = "aircraft-alert-detail";
+            detail.textContent = warnings.map(a => `Severity ${a.severity}: ${alertTitle(a)} · ${a.reason || alertState(a)}`).join("; ");
+            record.append(detail);
+          }
           item.append(record);
           list.append(item);
         }
@@ -626,6 +814,7 @@
           if (position.x > 75) marker.classList.add("edge-right");
           if (position.y > 65) marker.classList.add("edge-bottom");
           marker.dataset.aircraftId = plane.aircraft_id;
+          marker.className += aircraftAlertClass(planes.map(p => p.aircraft_id));
           marker.dataset.position = `${plane.latitude},${plane.longitude}`;
           marker.setAttribute("aria-pressed", String(planes.some(item => item.aircraft_id === selectedAircraft)));
           marker.title = planes.map(item => `${item.aircraft_id} · ${altitudeLabel(item)} · Lat ${item.latitude.toFixed(5)} · Lon ${item.longitude.toFixed(5)}`).join("\n");
@@ -709,16 +898,19 @@
         if (refreshing) return;
         refreshing = true;
         try {
-          const [airportResult, messagesResult, aircraftResult] = await Promise.allSettled([
+          const [airportResult, messagesResult, aircraftResult, alertsResult] = await Promise.allSettled([
             getJson("/api/airport"),
             getJson("/api/command-messages"),
             getJson("/api/aircraft"),
+            getJson("/api/alerts"),
           ]);
 
           const airportReady = airportResult.status === "fulfilled";
           const messagesReady = messagesResult.status === "fulfilled";
           const aircraftReady = aircraftResult.status === "fulfilled";
-          setStatus(!airportReady || !messagesReady || !aircraftReady);
+          const alertsReady = alertsResult.status === "fulfilled";
+          setStatus(!airportReady || !messagesReady || !aircraftReady || !alertsReady);
+          updateAlerts(alertsReady ? alertsResult.value : null);
 
           const airportError = document.getElementById("airport-error");
           if (airportReady) {
@@ -755,6 +947,7 @@
             if (!lastAircraftSnapshot) document.getElementById("aircraft-summary").textContent = "Radar positions unavailable";
           }
           renderAircraft();
+          renderAlerts();
 
           const messageError = document.getElementById("message-error");
           if (messagesReady) {

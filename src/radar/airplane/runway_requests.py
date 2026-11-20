@@ -12,7 +12,7 @@ import json
 # Tower's messaging functions, used exactly as tower wrote them.
 from src.tower.messaging.db import init_db as init_messages_db, save_message, get_messages
 
-from src.radar.airplane.aircraft_repo import TIME_FORMAT, get_aircraft, now, update_runway
+from src.radar.airplane.aircraft_repo import TIME_FORMAT, get_aircraft, now, record_departure, update_runway
 
 # The message types, all in one place. If tower wants different names, change them here.
 REQUEST_LANDING = "REQUEST_LANDING"    # radar -> tower
@@ -21,6 +21,7 @@ RUNWAY_ASSIGNED = "RUNWAY_ASSIGNED"    # tower -> radar, includes "runway_id"
 NO_RUNWAY = "NO_RUNWAY"                # tower -> radar
 LANDED = "LANDED"                      # radar -> tower, plane is off the runway (REQ-RAD-014)
 DEPARTED = "DEPARTED"                  # radar -> tower, plane has left (REQ-RAD-014)
+PARKED = "PARKED"                      # radar -> tower, landed plane is off its runway (REQ-RAD-019)
 AIRCRAFT_INFO = "AIRCRAFT_INFO"        # radar -> tower, a plane's current data (REQ-RAD-016)
 
 
@@ -38,7 +39,7 @@ def read_radar_inbox():
 
 # --- radar -> tower ---
 
-def request_runway(conn, aircraft_id, request_type, send):
+def request_runway(conn, aircraft_id, request_type, send, clock=now):
     """Ask tower for a runway. Raises ValueError if radar has no plane with this ID.
 
     Returns the message that was sent, as a dict.
@@ -48,7 +49,7 @@ def request_runway(conn, aircraft_id, request_type, send):
     message = {
         "type": request_type,
         "aircraft_id": aircraft_id,
-        "timestamp": now().strftime(TIME_FORMAT),
+        "timestamp": clock().strftime(TIME_FORMAT),
     }
     send(json.dumps(message))  # dict -> JSON text, because message content is text
     return message
@@ -71,11 +72,19 @@ def report_landed(conn, aircraft_id, send=send_to_tower):
     return request_runway(conn, aircraft_id, LANDED, send)
 
 
-def report_departed(conn, aircraft_id, send=send_to_tower):
+def report_departed(conn, aircraft_id, send=send_to_tower, clock=now):
     """Tell tower the plane has departed, so tower can free its runway. The plane is not changed."""
     # The plane is kept so command can still see it. Old tower replies are harmless: they just
     # set the same runway again, and a new request gets a new reply that overwrites runway_id.
-    return request_runway(conn, aircraft_id, DEPARTED, send)
+    message = request_runway(conn, aircraft_id, DEPARTED, send, clock)
+    record_departure(conn, aircraft_id, message["timestamp"])  # its next flight starts now (REQ-RAD-018)
+    return message
+
+
+def report_parked(conn, aircraft_id, send=send_to_tower):
+    """Tell tower a landed plane has left its runway and parked. Tower frees the runway on PARKED
+    (REQ-TOW-011); LANDED alone keeps it. Used after the 30 second wait (REQ-RAD-019)."""
+    return request_runway(conn, aircraft_id, PARKED, send)
 
 
 # --- radar -> tower: a plane's current data (REQ-RAD-016) ---
