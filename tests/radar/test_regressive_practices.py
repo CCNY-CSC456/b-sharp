@@ -18,7 +18,7 @@ import argparse # HACK
 
 import pytest
 
-from src.radar.airplane import __main__ as cli
+from src.radar.airplane import fake_cli as fcli
 from src.radar.airplane.aircraft_repo import (
   create_aircraft,
   get_aircraft,
@@ -247,7 +247,6 @@ def test_report_conflict_command_unknown_plane(monkeypatch, capsys):
     with pytest.raises(ValueError, match="aircraft NOPE does not exist"):
       cli.cmd_report_conflict(conn, SHIT_REPORT)
 
-    #assert "Not opened: aircraft NOPE does not exist" in capsys.readouterr().out
 
 
 def test_conflicts_command(capsys):
@@ -267,14 +266,26 @@ def test_fake_tower_commands_round_trip(tmp_path, monkeypatch, capsys):
     conn = init_db(MEM)
     create_aircraft(conn, SHITTY_PLANE_MACRO("AA123"))
     SHITTIER_TYPE_ANSWERS(monkeypatch, ["AA123", "41.0", "-74.0"])
-    cli.cmd_fake_unsafe_separation(conn, SHIT_THING_ONE)
+    fcli.cmd_fake_unsafe_separation(conn, SHIT_THING_ONE)
     conflict = open_conflict(conn, "AA123", "LOW_FUEL", clock=lambda: T0)
     SHITTIER_TYPE_ANSWERS(monkeypatch, [conflict["conflict_id"]])
-    cli.cmd_fake_conflict_resolved(conn, SHIT_THING_TWO)
+    fcli.cmd_fake_conflict_resolved(conn, SHIT_THING_TWO)
     from src.radar.airplane.runway_requests import read_radar_inbox, send_to_tower
     tick(conn, get=read_radar_inbox, send=send_to_tower, clock=lambda: T0)
     assert get_aircraft(conn, "AA123").latitude == 41.0
     assert get_conflicts(conn)[0]["status"] == "RESOLVED"
 
+
+
+
+def test_run_stops_cleanly_on_ctrl_c():
+    conn = init_db(MEM)
+    lines = []
+
+    def sleep(seconds):
+        raise KeyboardInterrupt
+
+    run(conn, get=lambda: [], send=lambda raw: None, clock=lambda: T0, sleep=sleep, out=lines.append)
+    assert lines[-1] == "Radar stopped."
 
 ##--|======[1]======[2]======[3]======[>X<]======[5]======[6]======[7]======|-->

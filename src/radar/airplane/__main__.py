@@ -37,7 +37,6 @@ from typing import Any
 from src.radar.airplane.aircraft_repo import get_aircraft, init_db, update_altitude, update_position
 from src.radar.airplane.conflicts import (
     CONFLICT_REASONS,
-    fake_conflict_resolved,
     get_conflict,
     get_conflicts,
     open_conflict,
@@ -46,7 +45,6 @@ from src.radar.airplane.create_airplane import create_airplane
 from src.radar.airplane.monitor import run
 from src.radar.airplane.runway_requests import (
     check_tower_replies,
-    fake_tower_reply,
     report_departed,
     report_landed,
     report_parked,
@@ -54,12 +52,67 @@ from src.radar.airplane.runway_requests import (
     request_takeoff,
     send_aircraft_info,
 )
-from src.radar.airplane.separation import fake_unsafe_separation
+
 from src.tower.messaging.query_fetch import load_queries
 
 QUERIES = load_queries("queries.sql")
 STATUSES = ["Parked", "Departing", "Landing"]
 STATUS_MAP = {s.lower(): s for s in STATUSES}
+
+## SURGERY
+
+from dataclasses import dataclass
+from typing import Callable
+
+
+@dataclass(frozen=True)
+class FieldSpec:
+    json_keys: list[str]
+    flag_attr: str
+    pos_attr: str | None
+    prompt_fn: Callable[[], Any]
+    cast_fn: Callable[[Any], Any] = lambda x: x
+    required: bool = True
+
+
+def resolve_fields(
+    args: argparse.Namespace,
+    specs: dict[str, FieldSpec],
+    *,
+    first_pos_attr: str | None = "pos_aircraft_id",
+) -> dict[str, Any]:
+    first_pos_val = getattr(args, first_pos_attr, None) if first_pos_attr else None
+    json_data = _extract_json_blob(first_pos_val, args.json_payload, args.command)
+    first_pos_is_json = _is_json_or_file_token(first_pos_val)
+
+    has_explicit_input = bool(json_data) or any(
+        getattr(args, spec.flag_attr, None) is not None
+        or (
+            getattr(args, spec.pos_attr, None) is not None
+            and not (first_pos_is_json and spec.pos_attr == first_pos_attr)
+        )
+        for spec in specs.values()
+    )
+    interactive = bool(getattr(args, "interactive", False)) or not has_explicit_input
+
+    resolved: dict[str, Any] = {}
+    for name, spec in specs.items():
+        pos_val = None
+        if spec.pos_attr and not (first_pos_is_json and spec.pos_attr == first_pos_attr):
+            pos_val = getattr(args, spec.pos_attr, None)
+        resolved[name] = pick_value(
+            flag_val=getattr(args, spec.flag_attr, None),
+            pos_val=pos_val,
+            json_data=json_data,
+            json_keys=spec.json_keys,
+            interactive=interactive,
+            prompt_fn=spec.prompt_fn,
+            cast_fn=spec.cast_fn,
+            required=spec.required,
+        )
+    return resolved
+
+##
 
 
 class RadarArgumentParser(argparse.ArgumentParser):
@@ -243,168 +296,91 @@ def _is_json_or_file_token(val: str | None) -> bool:
 
 
 def _resolve_single_aircraft_id(args: argparse.Namespace, prompt_label: str = "Aircraft ID") -> str:
-    json_data = _extract_json_blob(args.pos_aircraft_id, args.json_payload, args.command)
-    pos_id = None if _is_json_or_file_token(args.pos_aircraft_id) else args.pos_aircraft_id
-    interactive = args.interactive or (not json_data and args.aircraft_id is None and pos_id is None)
-    return pick_value(
-        args.aircraft_id,
-        pos_id,
-        json_data,
-        ["aircraft_id", "id"],
-        interactive,
-        lambda: ask_text(prompt_label),
-        str,
+    values = resolve_fields(
+        args,
+        {
+            "aircraft_id": FieldSpec(
+                ["aircraft_id", "id"], "aircraft_id", "pos_aircraft_id", lambda: ask_text(prompt_label), str
+            ),
+        },
     )
+    return values["aircraft_id"]
 
-
+### ORD
 def cmd_create(conn, args: argparse.Namespace) -> None:
-    json_data = _extract_json_blob(args.pos_aircraft_id, args.json_payload, args.command)
-    pos_id = None if _is_json_or_file_token(args.pos_aircraft_id) else args.pos_aircraft_id
-
-    interactive = args.interactive or (
-        not json_data
-        and args.aircraft_id is None
-        and pos_id is None
-        and args.latitude is None
-        and args.pos_latitude is None
-        and args.longitude is None
-        and args.pos_longitude is None
-        and args.altitude is None
-        and args.pos_altitude is None
-        and args.status is None
-        and args.pos_status is None
+    values = resolve_fields(
+        args,
+        {
+            "aircraft_id": FieldSpec(
+                ["aircraft_id", "id"], "aircraft_id", "pos_aircraft_id", lambda: ask_text("Aircraft ID"), str
+            ),
+            "latitude": FieldSpec(
+                ["latitude", "lat"], "latitude", "pos_latitude", lambda: ask_number("Latitude"), float
+            ),
+            "longitude": FieldSpec(
+                ["longitude", "lon", "lng"], "longitude", "pos_longitude", lambda: ask_number("Longitude"), float
+            ),
+            "altitude": FieldSpec(
+                ["altitude", "alt"], "altitude", "pos_altitude", lambda: ask_number("Altitude (feet)"), float
+            ),
+            "status": FieldSpec(
+                ["status"], "status", "pos_status", ask_status, normalize_status
+            ),
+        },
     )
-
-    aircraft_id = pick_value(
-        args.aircraft_id,
-        pos_id,
-        json_data,
-        ["aircraft_id", "id"],
-        interactive,
-        lambda: ask_text("Aircraft ID"),
-        str,
+    create_airplane(
+        conn,
+        values["aircraft_id"],
+        values["latitude"],
+        values["longitude"],
+        values["altitude"],
+        values["status"],
     )
-    latitude = pick_value(
-        args.latitude,
-        pos_latitude := args.pos_latitude,
-        json_data,
-        ["latitude", "lat"],
-        interactive,
-        lambda: ask_number("Latitude"),
-        float,
-    )
-    longitude = pick_value(
-        args.longitude,
-        pos_longitude := args.pos_longitude,
-        json_data,
-        ["longitude", "lon", "lng"],
-        interactive,
-        lambda: ask_number("Longitude"),
-        float,
-    )
-    altitude = pick_value(
-        args.altitude,
-        pos_altitude := args.pos_altitude,
-        json_data,
-        ["altitude", "alt"],
-        interactive,
-        lambda: ask_number("Altitude (feet)"),
-        float,
-    )
-    status = pick_value(
-        args.status,
-        args.pos_status,
-        json_data,
-        ["status"],
-        interactive,
-        ask_status,
-        normalize_status,
-    )
-    _ = (pos_latitude, pos_longitude, pos_altitude)
-
-    create_airplane(conn, aircraft_id, latitude, longitude, altitude, status)
-    print(f"\nCreated airplane {aircraft_id} and sent it to tower.")
+    print(f"\nCreated airplane {values['aircraft_id']} and sent it to tower.")
 
 
 def cmd_set_altitude(conn, args: argparse.Namespace) -> None:
-    json_data = _extract_json_blob(args.pos_aircraft_id, args.json_payload, args.command)
-    pos_id = None if _is_json_or_file_token(args.pos_aircraft_id) else args.pos_aircraft_id
-    interactive = args.interactive or (
-        not json_data
-        and args.aircraft_id is None
-        and pos_id is None
-        and args.altitude is None
-        and args.pos_altitude is None
+    values = resolve_fields(
+        args,
+        {
+            "aircraft_id": FieldSpec(
+                ["aircraft_id", "id"], "aircraft_id", "pos_aircraft_id", lambda: ask_text("Aircraft ID"), str
+            ),
+            "altitude": FieldSpec(
+                ["altitude", "alt", "new_altitude"],
+                "altitude",
+                "pos_altitude",
+                lambda: ask_number("New altitude (feet)"),
+                float,
+            ),
+        },
     )
-
-    aircraft_id = pick_value(
-        args.aircraft_id,
-        pos_id,
-        json_data,
-        ["aircraft_id", "id"],
-        interactive,
-        lambda: ask_text("Aircraft ID"),
-        str,
-    )
-    altitude = pick_value(
-        args.altitude,
-        args.pos_altitude,
-        json_data,
-        ["altitude", "alt", "new_altitude"],
-        interactive,
-        lambda: ask_number("New altitude (feet)"),
-        float,
-    )
-
-    update_altitude(conn, aircraft_id, altitude)
-    send_aircraft_info(conn, aircraft_id)
-    print(f"\nSet {aircraft_id} altitude to {altitude} feet and sent the update to tower.")
+    update_altitude(conn, values["aircraft_id"], values["altitude"])
+    send_aircraft_info(conn, values["aircraft_id"])
+    print(f"\nSet {values['aircraft_id']} altitude to {values['altitude']} feet and sent the update to tower.")
 
 
 def cmd_set_position(conn, args: argparse.Namespace) -> None:
-    json_data = _extract_json_blob(args.pos_aircraft_id, args.json_payload, args.command)
-    pos_id = None if _is_json_or_file_token(args.pos_aircraft_id) else args.pos_aircraft_id
-    interactive = args.interactive or (
-        not json_data
-        and args.aircraft_id is None
-        and pos_id is None
-        and args.latitude is None
-        and args.pos_latitude is None
-        and args.longitude is None
-        and args.pos_longitude is None
+    values = resolve_fields(
+        args,
+        {
+            "aircraft_id": FieldSpec(
+                ["aircraft_id", "id"], "aircraft_id", "pos_aircraft_id", lambda: ask_text("Aircraft ID"), str
+            ),
+            "latitude": FieldSpec(
+                ["latitude", "lat"], "latitude", "pos_latitude", lambda: ask_number("New latitude"), float
+            ),
+            "longitude": FieldSpec(
+                ["longitude", "lon", "lng"], "longitude", "pos_longitude", lambda: ask_number("New longitude"), float
+            ),
+        },
     )
-
-    aircraft_id = pick_value(
-        args.aircraft_id,
-        pos_id,
-        json_data,
-        ["aircraft_id", "id"],
-        interactive,
-        lambda: ask_text("Aircraft ID"),
-        str,
+    update_position(conn, values["aircraft_id"], values["latitude"], values["longitude"])
+    send_aircraft_info(conn, values["aircraft_id"])
+    print(
+        f"\nMoved {values['aircraft_id']} to ({values['latitude']}, {values['longitude']}) "
+        "and sent the update to tower."
     )
-    latitude = pick_value(
-        args.latitude,
-        args.pos_latitude,
-        json_data,
-        ["latitude", "lat"],
-        interactive,
-        lambda: ask_number("New latitude"),
-        float,
-    )
-    longitude = pick_value(
-        args.longitude,
-        args.pos_longitude,
-        json_data,
-        ["longitude", "lon", "lng"],
-        interactive,
-        lambda: ask_number("New longitude"),
-        float,
-    )
-
-    update_position(conn, aircraft_id, latitude, longitude)
-    send_aircraft_info(conn, aircraft_id)
-    print(f"\nMoved {aircraft_id} to ({latitude}, {longitude}) and sent the update to tower.")
 
 
 def cmd_send_info(conn, args: argparse.Namespace) -> None:
@@ -440,47 +416,31 @@ def cmd_check_replies(conn, args: argparse.Namespace) -> None:
         print(line)
 
 
-def cmd_fake_reply(conn, args: argparse.Namespace) -> None:
-    json_data = _extract_json_blob(args.pos_aircraft_id, args.json_payload, args.command)
-    pos_id = None if _is_json_or_file_token(args.pos_aircraft_id) else args.pos_aircraft_id
-    pos_runway = None if _is_json_or_file_token(args.pos_aircraft_id) else args.pos_runway_id
-
-    interactive = args.interactive or (
-        not json_data
-        and args.aircraft_id is None
-        and pos_id is None
-        and args.runway_id is None
-        and pos_runway is None
-    )
-
-    aircraft_id = pick_value(
-        args.aircraft_id,
-        pos_id,
-        json_data,
-        ["aircraft_id", "id"],
-        interactive,
-        lambda: ask_text("Aircraft ID"),
-        str,
-    )
-    if get_aircraft(conn, aircraft_id) is None:
-        raise ValueError(f"radar has no aircraft {aircraft_id}")
-
-    runway_id = pick_value(
-        args.runway_id,
-        pos_runway,
-        json_data,
-        ["runway_id", "runway"],
-        interactive,
-        lambda: input("Runway (leave empty for no runway): ").strip(),
-        lambda v: "" if v is None else str(v).strip(),
-        required=False,
-    )
-    if runway_id is None:
-        runway_id = ""
-
-    fake_tower_reply(aircraft_id, runway_id)
-    answer = f"runway {runway_id}" if runway_id else "no runway"
-    print(f"\nTower replied: {answer} for {aircraft_id} (test reply). Run check-replies to read it.")
+# def cmd_fake_reply(conn, args: argparse.Namespace) -> None:
+#     values = resolve_fields(
+#         args,
+#         {
+#             "aircraft_id": FieldSpec(
+#                 ["aircraft_id", "id"], "aircraft_id", "pos_aircraft_id", lambda: ask_text("Aircraft ID"), str
+#             ),
+#             "runway_id": FieldSpec(
+#                 ["runway_id", "runway"],
+#                 "runway_id",
+#                 "pos_runway_id",
+#                 lambda: input("Runway (leave empty for no runway): ").strip(),
+#                 lambda v: "" if v is None else str(v).strip(),
+#                 required=False,
+#             ),
+#         },
+#     )
+#     aircraft_id = values["aircraft_id"]
+#     if get_aircraft(conn, aircraft_id) is None:
+#         raise ValueError(f"radar has no aircraft {aircraft_id}")
+#
+#     runway_id = values["runway_id"] or ""
+#     fake_tower_reply(aircraft_id, runway_id)
+#     answer = f"runway {runway_id}" if runway_id else "no runway"
+#     print(f"\nTower replied: {answer} for {aircraft_id} (test reply). Run check-replies to read it.")
 
 
 def cmd_list(conn, args: argparse.Namespace) -> None:
@@ -504,37 +464,20 @@ def cmd_run(conn, args: argparse.Namespace) -> None:
 
 
 def cmd_report_conflict(conn, args: argparse.Namespace) -> None:
-    json_data = _extract_json_blob(args.pos_aircraft_id, args.json_payload, args.command)
-    pos_id = None if _is_json_or_file_token(args.pos_aircraft_id) else args.pos_aircraft_id
-    interactive = args.interactive or (
-        not json_data
-        and args.aircraft_id is None
-        and pos_id is None
-        and args.reason is None
-        and args.pos_reason is None
+    values = resolve_fields(
+        args,
+        {
+            "aircraft_id": FieldSpec(
+                ["aircraft_id", "id"], "aircraft_id", "pos_aircraft_id", lambda: ask_text("Aircraft ID"), str
+            ),
+            "reason": FieldSpec(
+                ["reason"], "reason", "pos_reason", ask_reason, normalize_conflict_reason
+            ),
+        },
     )
 
-    aircraft_id = pick_value(
-        args.aircraft_id,
-        pos_id,
-        json_data,
-        ["aircraft_id", "id"],
-        interactive,
-        lambda: ask_text("Aircraft ID"),
-        str,
-    )
-    reason = pick_value(
-        args.reason,
-        args.pos_reason,
-        json_data,
-        ["reason"],
-        interactive,
-        ask_reason,
-        normalize_conflict_reason,
-    )
-
-    conflict = open_conflict(conn, aircraft_id, reason)
-    print(f"\nConflict {reason} opened for {aircraft_id} (id {conflict['conflict_id']}).")
+    conflict = open_conflict(conn, values["aircraft_id"], values["reason"])
+    print(f"\nConflict {values['reason']} opened for {values['aircraft_id']} (id {conflict['conflict_id']}).")
     print("`python -m src.radar.airplane run` sends it to tower every second until tower resolves it.")
 
 
@@ -552,88 +495,89 @@ def cmd_conflicts(conn, args: argparse.Namespace) -> None:
         )
 
 
-def cmd_fake_unsafe_separation(conn, args: argparse.Namespace) -> None:
-    json_data = _extract_json_blob(args.pos_aircraft_id, args.json_payload, args.command)
-    pos_id = None if _is_json_or_file_token(args.pos_aircraft_id) else args.pos_aircraft_id
-    interactive = args.interactive or (
-        not json_data
-        and args.aircraft_id is None
-        and pos_id is None
-        and args.latitude is None
-        and args.pos_latitude is None
-        and args.longitude is None
-        and args.pos_longitude is None
-    )
+# def cmd_fake_unsafe_separation(conn, args: argparse.Namespace) -> None:
+#     json_data = _extract_json_blob(args.pos_aircraft_id, args.json_payload, args.command)
+#     pos_id = None if _is_json_or_file_token(args.pos_aircraft_id) else args.pos_aircraft_id
+#     interactive = args.interactive or (
+#         not json_data
+#         and args.aircraft_id is None
+#         and pos_id is None
+#         and args.latitude is None
+#         and args.pos_latitude is None
+#         and args.longitude is None
+#         and args.pos_longitude is None
+#     )
+#
+#     aircraft_id = pick_value(
+#         args.aircraft_id,
+#         pos_id,
+#         json_data,
+#         ["aircraft_id", "id"],
+#         interactive,
+#         lambda: ask_text("Aircraft ID"),
+#         str,
+#     )
+#     if get_aircraft(conn, aircraft_id) is None:
+#         raise ValueError(f"radar has no aircraft {aircraft_id}")
+#
+#     latitude = pick_value(
+#         args.latitude,
+#         args.pos_latitude,
+#         json_data,
+#         ["latitude", "lat"],
+#         interactive,
+#         lambda: ask_number("Move to latitude"),
+#         float,
+#     )
+#     longitude = pick_value(
+#         args.longitude,
+#         args.pos_longitude,
+#         json_data,
+#         ["longitude", "lon", "lng"],
+#         interactive,
+#         lambda: ask_number("Move to longitude"),
+#         float,
+#     )
+#
+#     fake_unsafe_separation(aircraft_id, latitude, longitude)
+#     print(
+#         f"\nTower told radar to move {aircraft_id} to ({latitude}, {longitude}) (test message). "
+#         "Run `run --once` to handle it."
+#     )
 
-    aircraft_id = pick_value(
-        args.aircraft_id,
-        pos_id,
-        json_data,
-        ["aircraft_id", "id"],
-        interactive,
-        lambda: ask_text("Aircraft ID"),
-        str,
-    )
-    if get_aircraft(conn, aircraft_id) is None:
-        raise ValueError(f"radar has no aircraft {aircraft_id}")
 
-    latitude = pick_value(
-        args.latitude,
-        args.pos_latitude,
-        json_data,
-        ["latitude", "lat"],
-        interactive,
-        lambda: ask_number("Move to latitude"),
-        float,
-    )
-    longitude = pick_value(
-        args.longitude,
-        args.pos_longitude,
-        json_data,
-        ["longitude", "lon", "lng"],
-        interactive,
-        lambda: ask_number("Move to longitude"),
-        float,
-    )
+# def cmd_fake_conflict_resolved(conn, args: argparse.Namespace) -> None:
+#     json_data = _extract_json_blob(args.pos_conflict_id, args.json_payload, args.command)
+#     pos_cid = None if _is_json_or_file_token(args.pos_conflict_id) else args.pos_conflict_id
+#     interactive = args.interactive or (
+#         not json_data and args.conflict_id is None and pos_cid is None
+#     )
+#
+#     open_conflicts = get_conflicts(conn, "OPEN")
+#     if interactive and open_conflicts:
+#         open_ids = [c["conflict_id"] for c in open_conflicts]
+#         print("Open conflicts: " + ", ".join(open_ids))
+#
+#     conflict_id = pick_value(
+#         args.conflict_id,
+#         pos_cid,
+#         json_data,
+#         ["conflict_id", "id"],
+#         interactive,
+#         lambda: ask_text("Conflict ID"),
+#         str,
+#     )
+#     conflict = get_conflict(conn, conflict_id)
+#     if conflict is None or conflict["status"] != "OPEN":
+#         raise ValueError(f"no open conflict with ID {conflict_id}")
+#
+#     fake_conflict_resolved(conflict)
+#     print(
+#         f"\nTower resolved {conflict['conflict_id']} (test message). "
+#         "Run `run --once` to handle it."
+#     )
 
-    fake_unsafe_separation(aircraft_id, latitude, longitude)
-    print(
-        f"\nTower told radar to move {aircraft_id} to ({latitude}, {longitude}) (test message). "
-        "Run `run --once` to handle it."
-    )
-
-
-def cmd_fake_conflict_resolved(conn, args: argparse.Namespace) -> None:
-    json_data = _extract_json_blob(args.pos_conflict_id, args.json_payload, args.command)
-    pos_cid = None if _is_json_or_file_token(args.pos_conflict_id) else args.pos_conflict_id
-    interactive = args.interactive or (
-        not json_data and args.conflict_id is None and pos_cid is None
-    )
-
-    open_conflicts = get_conflicts(conn, "OPEN")
-    if interactive and open_conflicts:
-        open_ids = [c["conflict_id"] for c in open_conflicts]
-        print("Open conflicts: " + ", ".join(open_ids))
-
-    conflict_id = pick_value(
-        args.conflict_id,
-        pos_cid,
-        json_data,
-        ["conflict_id", "id"],
-        interactive,
-        lambda: ask_text("Conflict ID"),
-        str,
-    )
-    conflict = get_conflict(conn, conflict_id)
-    if conflict is None or conflict["status"] != "OPEN":
-        raise ValueError(f"no open conflict with ID {conflict_id}")
-
-    fake_conflict_resolved(conflict)
-    print(
-        f"\nTower resolved {conflict['conflict_id']} (test message). "
-        "Run `run --once` to handle it."
-    )
-
+### END
 
 def _add_common_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
@@ -743,14 +687,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_replies = subparsers.add_parser("check-replies", help="Read tower replies and update runways")
     p_replies.set_defaults(func=cmd_check_replies)
 
-    # fake-tower-reply
-    p_fake = subparsers.add_parser("fake-tower-reply", help="TESTING: simulate a runway reply from tower")
-    _add_common_flags(p_fake)
-    p_fake.add_argument("pos_aircraft_id", nargs="?", metavar="AIRCRAFT_ID_OR_@JSON")
-    p_fake.add_argument("pos_runway_id", nargs="?", metavar="RUNWAY_ID")
-    p_fake.add_argument("--aircraft-id", "--id", dest="aircraft_id")
-    p_fake.add_argument("--runway-id", "--runway", dest="runway_id")
-    p_fake.set_defaults(func=cmd_fake_reply)
+    # # fake-tower-reply
+    # p_fake = subparsers.add_parser("fake-tower-reply", help="TESTING: simulate a runway reply from tower")
+    # _add_common_flags(p_fake)
+    # p_fake.add_argument("pos_aircraft_id", nargs="?", metavar="AIRCRAFT_ID_OR_@JSON")
+    # p_fake.add_argument("pos_runway_id", nargs="?", metavar="RUNWAY_ID")
+    # p_fake.add_argument("--aircraft-id", "--id", dest="aircraft_id")
+    # p_fake.add_argument("--runway-id", "--runway", dest="runway_id")
+    # p_fake.set_defaults(func=cmd_fake_reply)
 
     # run
     p_run = subparsers.add_parser("run", help="Run the R2 radar monitoring loop")
@@ -770,29 +714,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_conflicts = subparsers.add_parser("conflicts", help="List conflicts in radar.db")
     p_conflicts.set_defaults(func=cmd_conflicts)
 
-    # fake-unsafe-separation
-    p_sep = subparsers.add_parser(
-        "fake-unsafe-separation",
-        help="TESTING: simulate an UNSAFE_SEPARATION message from tower",
-    )
-    _add_common_flags(p_sep)
-    p_sep.add_argument("pos_aircraft_id", nargs="?", metavar="AIRCRAFT_ID_OR_@JSON")
-    p_sep.add_argument("pos_latitude", nargs="?", type=float, metavar="LATITUDE")
-    p_sep.add_argument("pos_longitude", nargs="?", type=float, metavar="LONGITUDE")
-    p_sep.add_argument("--aircraft-id", "--id", dest="aircraft_id")
-    p_sep.add_argument("--latitude", "--lat", dest="latitude", type=float)
-    p_sep.add_argument("--longitude", "--lon", "--lng", dest="longitude", type=float)
-    p_sep.set_defaults(func=cmd_fake_unsafe_separation)
+    # # fake-unsafe-separation
+    # p_sep = subparsers.add_parser(
+    #     "fake-unsafe-separation",
+    #     help="TESTING: simulate an UNSAFE_SEPARATION message from tower",
+    # )
+    # _add_common_flags(p_sep)
+    # p_sep.add_argument("pos_aircraft_id", nargs="?", metavar="AIRCRAFT_ID_OR_@JSON")
+    # p_sep.add_argument("pos_latitude", nargs="?", type=float, metavar="LATITUDE")
+    # p_sep.add_argument("pos_longitude", nargs="?", type=float, metavar="LONGITUDE")
+    # p_sep.add_argument("--aircraft-id", "--id", dest="aircraft_id")
+    # p_sep.add_argument("--latitude", "--lat", dest="latitude", type=float)
+    # p_sep.add_argument("--longitude", "--lon", "--lng", dest="longitude", type=float)
+    # p_sep.set_defaults(func=cmd_fake_unsafe_separation)
 
-    # fake-conflict-resolved
-    p_resolved = subparsers.add_parser(
-        "fake-conflict-resolved",
-        help="TESTING: simulate a CONFLICT_RESOLVED message from tower",
-    )
-    _add_common_flags(p_resolved)
-    p_resolved.add_argument("pos_conflict_id", nargs="?", metavar="CONFLICT_ID_OR_@JSON")
-    p_resolved.add_argument("--conflict-id", "--id", dest="conflict_id")
-    p_resolved.set_defaults(func=cmd_fake_conflict_resolved)
+    # # fake-conflict-resolved
+    # p_resolved = subparsers.add_parser(
+    #     "fake-conflict-resolved",
+    #     help="TESTING: simulate a CONFLICT_RESOLVED message from tower",
+    # )
+    # _add_common_flags(p_resolved)
+    # p_resolved.add_argument("pos_conflict_id", nargs="?", metavar="CONFLICT_ID_OR_@JSON")
+    # p_resolved.add_argument("--conflict-id", "--id", dest="conflict_id")
+    # p_resolved.set_defaults(func=cmd_fake_conflict_resolved)
 
     return parser
 

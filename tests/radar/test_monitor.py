@@ -6,7 +6,7 @@ import json
 import time
 from datetime import datetime, timedelta
 
-from src.radar.airplane import __main__ as cli
+
 from src.radar.airplane.aircraft_repo import create_aircraft, get_aircraft, init_db
 from src.radar.airplane.conflicts import get_conflicts, open_conflict
 from src.radar.airplane.models import AircraftTelemetry
@@ -134,65 +134,3 @@ def test_many_planes_in_one_tick_without_slowing_down():
     assert sorted(json.loads(raw)["aircraft_id"] for raw in sent) == ids   # every plane, exactly once
     assert elapsed < 0.5
 
-
-def test_run_stops_cleanly_on_ctrl_c():
-    conn = init_db(MEM)
-    lines = []
-
-    def sleep(seconds):
-        raise KeyboardInterrupt
-
-    run(conn, get=lambda: [], send=lambda raw: None, clock=lambda: T0, sleep=sleep, out=lines.append)
-    assert lines[-1] == "Radar stopped."
-
-
-# # --- the menu commands ---
-#
-# def type_answers(monkeypatch, answers):
-#     answers = iter(answers)
-#     monkeypatch.setattr("builtins.input", lambda question: next(answers))
-#
-#
-# def test_report_conflict_command(tmp_path, monkeypatch, capsys):
-#     monkeypatch.setattr(tower_db, "DB", str(tmp_path / "test.db"))
-#     conn = init_db(MEM)
-#     create_aircraft(conn, BAD_PLANE_MACRO("AA123"))
-#     type_answers(monkeypatch, ["AA123", "low on gas", "3"])   # a bad choice is asked again
-#     cli.cmd_report_conflict(conn)
-#     out = capsys.readouterr().out
-#     assert "Conflict LOW_FUEL opened for AA123" in out
-#     assert get_conflicts(conn)[0]["reason"] == "LOW_FUEL"
-#
-#
-# def test_report_conflict_command_unknown_plane(monkeypatch, capsys):
-#     conn = init_db(MEM)
-#     type_answers(monkeypatch, ["NOPE", "1"])
-#     cli.cmd_report_conflict(conn)
-#     assert "Not opened: aircraft NOPE does not exist" in capsys.readouterr().out
-#
-#
-# def test_conflicts_command(capsys):
-#     conn = init_db(MEM)
-#     cli.cmd_conflicts(conn)
-#     assert "No conflicts" in capsys.readouterr().out
-#     create_aircraft(conn, BAD_PLANE_MACRO("AA123"))
-#     open_conflict(conn, "AA123", "LATE_4H", clock=lambda: T0)
-#     cli.cmd_conflicts(conn)
-#     out = capsys.readouterr().out
-#     assert "AA123" in out and "LATE_4H" in out and "OPEN" in out
-#
-#
-# def test_fake_tower_commands_round_trip(tmp_path, monkeypatch, capsys):
-#     # The testing helpers put tower-shaped messages in radar's real inbox, which a tick then reads.
-#     monkeypatch.setattr(tower_db, "DB", str(tmp_path / "test.db"))
-#     conn = init_db(MEM)
-#     create_aircraft(conn, BAD_PLANE_MACRO("AA123"))
-#     type_answers(monkeypatch, ["AA123", "41.0", "-74.0"])
-#     cli.fake_separation(conn)
-#     conflict = open_conflict(conn, "AA123", "LOW_FUEL", clock=lambda: T0)
-#     type_answers(monkeypatch, [conflict["conflict_id"]])
-#     cli.fake_resolve(conn)
-#     from src.radar.airplane.runway_requests import read_radar_inbox, send_to_tower
-#     tick(conn, get=read_radar_inbox, send=send_to_tower, clock=lambda: T0)
-#     assert get_aircraft(conn, "AA123").latitude == 41.0
-#     assert get_conflicts(conn)[0]["status"] == "RESOLVED"
